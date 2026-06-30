@@ -1,0 +1,17 @@
+name: Frequency rule with command action
+type: frequency
+index: logs-*
+num_events: 10
+timeframe:
+  minutes: 5
+query_key: user.name
+filter:
+  - query:
+      query_string:
+        query: "event.outcome:failure"
+alert:
+  - command
+command:
+  - "/opt/scripts/notify.sh"
+  - "%(rule_name)s"
+  - "%(user.name)s"

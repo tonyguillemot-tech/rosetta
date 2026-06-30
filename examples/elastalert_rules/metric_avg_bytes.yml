@@ -1,0 +1,9 @@
+name: High average outbound bytes
+type: metric_aggregation
+index: logs-network-*
+metric_agg_key: network.bytes
+metric_agg_type: avg
+max_threshold: 1000000
+query_key: source.ip
+timeframe:
+  minutes: 10

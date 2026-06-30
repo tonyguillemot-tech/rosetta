@@ -1,0 +1,188 @@
+"""Interface en ligne de commande pour la migration ElastAlert -> Elastic Security.
+
+Exemples :
+    python -m rosetta convert examples/elastalert_rules -o rules/
+    python -m rosetta report examples/elastalert_rules
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import secrets
+import sys
+from pathlib import Path
+
+from .converters.registry import convert
+from .detection_rule.toml_writer import to_toml
+from .parser.elastalert import parse_directory, parse_file
+from .sanitize import sanitize_report
+from .scoring.confidence import confidence_band, score
+
+
+def _slug(name: str) -> str:
+    s = re.sub(r"[^\w]+", "_", name.lower()).strip("_")
+    return s or "rule"
+
+
+def _process(paths: list[Path]):
+    rules = []
+    for p in paths:
+        if p.is_dir():
+            rules.extend(parse_directory(p))
+        else:
+            rules.append(parse_file(p))
+    results = []
+    for rule in rules:
+        res = convert(rule)
+        res = score(res)
+        results.append(res)
+    return results
+
+
+def cmd_convert(args: argparse.Namespace) -> int:
+    results = _process([Path(p) for p in args.inputs])
+    out_dir = Path(args.output)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    threshold = args.min_confidence
+
+    written = skipped = 0
+    for res in results:
+        if res.confidence < threshold:
+            skipped += 1
+            band = confidence_band(res.confidence)
+            print(f"[SKIP] {res.source.name} — confiance {res.confidence:.0%} ({band}) "
+                  f"< seuil {threshold:.0%}")
+            continue
+        toml = to_toml(res, min_stack=args.min_stack)
+        fname = f"{_slug(res.source.name)}.toml"
+        (out_dir / fname).write_text(toml, encoding="utf-8")
+        written += 1
+        print(f"[OK]   {res.source.name} -> {fname} "
+              f"({res.strategy.value}, {res.confidence:.0%})")
+    print(f"\n{written} règle(s) écrite(s), {skipped} ignorée(s) sous le seuil.")
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    results = _process([Path(p) for p in args.inputs])
+    report = []
+    for res in results:
+        report.append({
+            "name": res.source.name,
+            "source_type": res.source.rule_type,
+            "strategy": res.strategy.value,
+            "confidence": round(res.confidence, 3),
+            "band": confidence_band(res.confidence),
+            "needs_review": res.needs_review,
+            "warnings": res.warnings,
+            "factors": [
+                {"label": f.label, "delta": round(f.delta, 3), "detail": f.detail}
+                for f in res.factors
+            ],
+        })
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        _print_table(report)
+    return 0
+
+
+def _print_table(report: list[dict]) -> None:
+    print(f"{'RÈGLE':<40} {'TYPE':<18} {'STRATÉGIE':<12} {'CONFIANCE':<14} REVUE")
+    print("-" * 100)
+    for r in report:
+        review = "⚠ OUI" if r["needs_review"] else "non"
+        print(f"{r['name'][:39]:<40} {r['source_type']:<18} {r['strategy']:<12} "
+              f"{r['confidence']:.0%} ({r['band']})".ljust(14) + f"   {review}")
+    avg = sum(r["confidence"] for r in report) / len(report) if report else 0
+    print("-" * 100)
+    print(f"Total : {len(report)} règle(s) — confiance moyenne {avg:.0%}")
+
+
+def _count_yaml_files(paths: list[Path]) -> int:
+    total = 0
+    for p in paths:
+        if p.is_dir():
+            total += sum(1 for _ in p.rglob("*.yml")) + sum(1 for _ in p.rglob("*.yaml"))
+        else:
+            total += 1
+    return total
+
+
+def cmd_share(args: argparse.Namespace) -> int:
+    """Produit une sortie sanitisée, partageable sans données sensibles.
+
+    Le client lance cette commande sur ses règles confidentielles. La sortie
+    ne contient AUCUN nom, valeur, champ, index ou requête en clair : seulement
+    des types, scores, facteurs, et la structure des règles. Sûre à transmettre.
+    """
+    paths = [Path(p) for p in args.inputs]
+    results = _process(paths)
+
+    # Échecs de parsing = fichiers présents - règles chargées avec succès
+    parse_errors = max(0, _count_yaml_files(paths) - len(results))
+
+    # Secret HMAC pour les empreintes. Par défaut : aléatoire (empreintes
+    # comparables seulement DANS ce rapport). Avec --hmac-secret ou la variable
+    # ROSETTA_HMAC_SECRET : stable entre exécutions (suivi d'une règle dans le temps).
+    secret_str = args.hmac_secret or os.environ.get("ROSETTA_HMAC_SECRET")
+    secret = secret_str.encode("utf-8") if secret_str else secrets.token_bytes(32)
+
+    report = sanitize_report(results, secret, parse_errors=parse_errors)
+
+    text = json.dumps(report, indent=2, ensure_ascii=False)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"Rapport sanitisé écrit dans {args.output} "
+              f"({report['rule_count']} règle(s), {parse_errors} erreur(s) de parsing).",
+              file=sys.stderr)
+        print("Aucune donnée sensible : noms, valeurs, champs et requêtes sont exclus.",
+              file=sys.stderr)
+    else:
+        print(text)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="rosetta",
+                                description="Migration ElastAlert -> Elastic Security")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    c = sub.add_parser("convert", help="Convertir et écrire les fichiers TOML")
+    c.add_argument("inputs", nargs="+", help="Fichiers ou dossiers de règles ElastAlert")
+    c.add_argument("-o", "--output", default="rules", help="Dossier de sortie TOML")
+    c.add_argument("--min-confidence", type=float, default=0.0,
+                   help="Seuil de confiance minimal pour écrire (0..1)")
+    c.add_argument("--min-stack", default="9.0.0", help="min_stack_version")
+    c.set_defaults(func=cmd_convert)
+
+    r = sub.add_parser("report", help="Afficher un rapport de confiance sans écrire")
+    r.add_argument("inputs", nargs="+")
+    r.add_argument("--json", action="store_true", help="Sortie JSON")
+    r.set_defaults(func=cmd_report)
+
+    s = sub.add_parser(
+        "share",
+        help="Produire une sortie sanitisée partageable (sans données sensibles)")
+    s.add_argument("inputs", nargs="+",
+                   help="Fichiers ou dossiers de règles ElastAlert")
+    s.add_argument("-o", "--output", default=None,
+                   help="Fichier de sortie JSON (défaut : stdout)")
+    s.add_argument("--hmac-secret", default=None,
+                   help="Secret pour des empreintes stables entre exécutions "
+                        "(sinon aléatoire ; aussi via ROSETTA_HMAC_SECRET)")
+    s.set_defaults(func=cmd_share)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

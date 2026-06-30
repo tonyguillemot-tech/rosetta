@@ -1,0 +1,14 @@
+name: Frequency with match enhancement
+type: frequency
+index: logs-*
+num_events: 5
+timeframe:
+  minutes: 10
+query_key: source.ip
+match_enhancements:
+  - "elastalert_modules.enhancements.GeoEnrich"
+filter:
+  - term:
+      event.action: "login"
+alert:
+  - slack

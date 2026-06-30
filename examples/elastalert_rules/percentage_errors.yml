@@ -1,0 +1,10 @@
+name: High error percentage per service
+type: percentage_match
+index: logs-app-*
+match_bucket_filter:
+  - term:
+      http.response.status_code: 500
+max_percentage: 30
+query_key: service.name
+timeframe:
+  minutes: 15

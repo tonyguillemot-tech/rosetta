@@ -1,0 +1,11 @@
+name: User authenticating to many hosts
+type: cardinality
+index: logs-*
+cardinality_field: host.name
+max_cardinality: 10
+query_key: user.name
+timeframe:
+  hours: 1
+filter:
+  - terms:
+      event.category: ["authentication"]

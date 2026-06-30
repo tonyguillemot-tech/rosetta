@@ -1,0 +1,8 @@
+name: Blacklist with custom python alerter
+type: blacklist
+index: logs-*
+compare_key: user.name
+blacklist:
+  - baduser
+alert: "elastalert_modules.my_alerts.AwesomeNewAlerter"
+output_file_path: "/tmp/alerts.log"

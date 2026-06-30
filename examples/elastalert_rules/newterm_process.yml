@@ -1,0 +1,10 @@
+name: New process name observed
+type: new_term
+index: logs-endpoint.events.*
+fields:
+  - process.name
+terms_window_size:
+  days: 30
+filter:
+  - term:
+      event.category: "process"

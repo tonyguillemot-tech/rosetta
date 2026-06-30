@@ -1,0 +1,13 @@
+name: Spike in authentication failures
+type: spike
+index: logs-*
+spike_height: 3
+spike_type: up
+threshold_cur: 50
+query_key: source.ip
+timeframe:
+  hours: 1
+filter:
+  - query:
+      query_string:
+        query: "event.outcome:failure"

@@ -1,0 +1,704 @@
+{
+  "schema_version": "1.0",
+  "tool_version": "0.1.0",
+  "rule_count": 15,
+  "parse_errors": 0,
+  "rules": [
+    {
+      "fingerprint": "154e91c81282",
+      "source_type": "any",
+      "strategy": "esql",
+      "confidence": 0.9,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.95
+        },
+        {
+          "label": "lucene_filter",
+          "delta": -0.05
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [
+        {
+          "kind": "query",
+          "has_boolean": true,
+          "has_wildcard": true,
+          "has_grouping": false
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "KEEP"
+        ],
+        "functions": [],
+        "operators": [
+          "==",
+          "AND",
+          "LIKE"
+        ],
+        "is_aggregating": false,
+        "stage_count": 3
+      },
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "a65d422e592d",
+      "source_type": "blacklist",
+      "strategy": "esql",
+      "confidence": 0.93,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [
+        {
+          "kind": "term"
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "WHERE",
+          "KEEP"
+        ],
+        "functions": [],
+        "operators": [
+          "==",
+          "IN"
+        ],
+        "is_aggregating": false,
+        "stage_count": 4
+      },
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "6d8ff9ff92be",
+      "source_type": "cardinality",
+      "strategy": "esql",
+      "confidence": 0.91,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.85
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        },
+        {
+          "label": "query_key",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [
+        {
+          "kind": "terms",
+          "arity": 1
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT_DISTINCT"
+        ],
+        "operators": [
+          ">",
+          "IN"
+        ],
+        "is_aggregating": true,
+        "stage_count": 4
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "4c333132e866",
+      "source_type": "change",
+      "strategy": "esql",
+      "confidence": 0.43,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.55
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        },
+        {
+          "label": "semantic_gap",
+          "delta": -0.05
+        }
+      ],
+      "warning_codes": {
+        "change_approx": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "term"
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT_DISTINCT"
+        ],
+        "operators": [
+          "==",
+          ">",
+          "IN"
+        ],
+        "is_aggregating": true,
+        "stage_count": 4
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "083be527c79f",
+      "source_type": "frequency",
+      "strategy": "esql",
+      "confidence": 0.73,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "custom_action",
+          "delta": -0.05
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        },
+        {
+          "label": "lucene_filter",
+          "delta": -0.05
+        },
+        {
+          "label": "query_key",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {
+        "command_alerter": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "query",
+          "has_boolean": false,
+          "has_wildcard": false,
+          "has_grouping": false
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT"
+        ],
+        "operators": [
+          "==",
+          ">",
+          ">="
+        ],
+        "is_aggregating": true,
+        "stage_count": 4
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [
+        "command_alerter"
+      ],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "2c33aa804cb6",
+      "source_type": "blacklist",
+      "strategy": "esql",
+      "confidence": 0.75,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "custom_action",
+          "delta": -0.05
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        }
+      ],
+      "warning_codes": {
+        "custom_alerter": 1
+      },
+      "filter_shapes": [],
+      "filter_count": 0,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "KEEP"
+        ],
+        "functions": [],
+        "operators": [
+          "IN"
+        ],
+        "is_aggregating": false,
+        "stage_count": 3
+      },
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [
+        "custom_alerter"
+      ],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "91291464f70d",
+      "source_type": "custom_module",
+      "strategy": "manual",
+      "confidence": 0.05,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.2
+        },
+        {
+          "label": "custom_detection_code",
+          "delta": -0.15
+        }
+      ],
+      "warning_codes": {
+        "custom_detection_code": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "query",
+          "has_boolean": false,
+          "has_wildcard": false,
+          "has_grouping": false
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": null,
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [],
+      "has_custom_detection_code": true
+    },
+    {
+      "fingerprint": "08094d436522",
+      "source_type": "flatline",
+      "strategy": "threshold",
+      "confidence": 0.43,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.55
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        },
+        {
+          "label": "semantic_gap",
+          "delta": -0.05
+        }
+      ],
+      "warning_codes": {
+        "flatline_inversion": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "term"
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": null,
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "d29a36ddb534",
+      "source_type": "frequency",
+      "strategy": "esql",
+      "confidence": 0.88,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "lucene_filter",
+          "delta": -0.05
+        },
+        {
+          "label": "query_key",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [
+        {
+          "kind": "query",
+          "has_boolean": true,
+          "has_wildcard": false,
+          "has_grouping": false
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT"
+        ],
+        "operators": [
+          "==",
+          ">",
+          ">=",
+          "AND"
+        ],
+        "is_aggregating": true,
+        "stage_count": 4
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "cd0ed2336960",
+      "source_type": "metric_aggregation",
+      "strategy": "esql",
+      "confidence": 0.85,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.82
+        },
+        {
+          "label": "query_key",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [],
+      "filter_count": 0,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "AVG"
+        ],
+        "operators": [
+          ">"
+        ],
+        "is_aggregating": true,
+        "stage_count": 3
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "0a9679767028",
+      "source_type": "new_term",
+      "strategy": "new_terms",
+      "confidence": 0.93,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {},
+      "filter_shapes": [
+        {
+          "kind": "term"
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": null,
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "22cf20b0471a",
+      "source_type": "percentage_match",
+      "strategy": "esql",
+      "confidence": 0.52,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.62
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        }
+      ],
+      "warning_codes": {
+        "percentage_match": 1
+      },
+      "filter_shapes": [],
+      "filter_count": 0,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "EVAL",
+          "STATS",
+          "EVAL",
+          "WHERE"
+        ],
+        "functions": [
+          "CASE",
+          "COUNT",
+          "SUM"
+        ],
+        "operators": [
+          "==",
+          ">"
+        ],
+        "is_aggregating": true,
+        "stage_count": 5
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "7437be167b68",
+      "source_type": "spike",
+      "strategy": "esql",
+      "confidence": 0.3,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.5
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        },
+        {
+          "label": "lucene_filter",
+          "delta": -0.05
+        },
+        {
+          "label": "semantic_gap",
+          "delta": -0.05
+        }
+      ],
+      "warning_codes": {
+        "spike_approx": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "query",
+          "has_boolean": false,
+          "has_wildcard": false,
+          "has_grouping": false
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "EVAL",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT",
+          "DATE_TRUNC"
+        ],
+        "operators": [
+          "==",
+          ">",
+          ">="
+        ],
+        "is_aggregating": true,
+        "stage_count": 5
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "26b422080ebe",
+      "source_type": "spike_aggregation",
+      "strategy": "manual",
+      "confidence": 0.1,
+      "needs_review": true,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.2
+        },
+        {
+          "label": "manual",
+          "delta": -0.1
+        }
+      ],
+      "warning_codes": {
+        "spike_approx": 1
+      },
+      "filter_shapes": [],
+      "filter_count": 0,
+      "esql_skeleton": null,
+      "uses_query_key": false,
+      "has_timeframe": false,
+      "custom_action_categories": [],
+      "has_custom_detection_code": false
+    },
+    {
+      "fingerprint": "58df32d89a1f",
+      "source_type": "frequency",
+      "strategy": "esql",
+      "confidence": 0.8,
+      "needs_review": false,
+      "factors": [
+        {
+          "label": "base_type",
+          "delta": 0.9
+        },
+        {
+          "label": "enhancement",
+          "delta": -0.06
+        },
+        {
+          "label": "warnings",
+          "delta": -0.1
+        },
+        {
+          "label": "structured_filter",
+          "delta": 0.03
+        },
+        {
+          "label": "query_key",
+          "delta": 0.03
+        }
+      ],
+      "warning_codes": {
+        "enhancement": 1
+      },
+      "filter_shapes": [
+        {
+          "kind": "term"
+        }
+      ],
+      "filter_count": 1,
+      "esql_skeleton": {
+        "pipeline": [
+          "FROM",
+          "WHERE",
+          "STATS",
+          "WHERE"
+        ],
+        "functions": [
+          "COUNT"
+        ],
+        "operators": [
+          "==",
+          ">",
+          ">="
+        ],
+        "is_aggregating": true,
+        "stage_count": 4
+      },
+      "uses_query_key": true,
+      "has_timeframe": true,
+      "custom_action_categories": [
+        "enhancement"
+      ],
+      "has_custom_detection_code": false
+    }
+  ]
+}

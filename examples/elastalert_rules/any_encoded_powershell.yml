@@ -1,0 +1,8 @@
+name: PowerShell encoded command
+type: any
+index: logs-endpoint.events.*
+priority: 3
+filter:
+  - query:
+      query_string:
+        query: "process.name:powershell.exe AND process.command_line:*-enc*"

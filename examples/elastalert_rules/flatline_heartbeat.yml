@@ -1,0 +1,10 @@
+name: Agent heartbeat flatline
+type: flatline
+index: logs-endpoint.events.*
+threshold: 1
+query_key: agent.id
+timeframe:
+  minutes: 10
+filter:
+  - term:
+      event.dataset: "endpoint.heartbeat"

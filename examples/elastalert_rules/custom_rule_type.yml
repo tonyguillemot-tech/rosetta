@@ -1,0 +1,16 @@
+name: Fully custom detection logic
+type: elastalert_modules.my_rules.SuspiciousLoginRule
+index: logs-*
+usernames:
+  - admin
+  - root
+time_start: "01:00"
+time_end: "04:00"
+filter:
+  - query:
+      query_string:
+        query: "event.category:authentication"
+alert:
+  - email
+email:
+  - soc@example.com

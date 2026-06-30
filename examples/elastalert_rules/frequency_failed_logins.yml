@@ -1,0 +1,13 @@
+name: High failed login count per user
+type: frequency
+index: logs-*
+num_events: 20
+timeframe:
+  minutes: 5
+query_key: user.name
+priority: 4
+description: Detects users with many failed authentication events.
+filter:
+  - query:
+      query_string:
+        query: "event.category:authentication AND event.outcome:failure"

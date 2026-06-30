@@ -1,0 +1,11 @@
+name: Blacklisted service accounts
+type: blacklist
+index: logs-system.security-*
+compare_key: user.name
+blacklist:
+  - svc_legacy
+  - guest
+  - test
+filter:
+  - term:
+      event.code: "4624"

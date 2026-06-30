@@ -1,0 +1,10 @@
+name: User changed geolocation
+type: change
+index: logs-*
+compare_key: source.geo.country_name
+query_key: user.name
+timeframe:
+  hours: 24
+filter:
+  - term:
+      event.category: "authentication"

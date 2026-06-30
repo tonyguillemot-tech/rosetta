@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rosetta"
+version = "0.1.0"
+description = "Migration de règles ElastAlert vers Elastic Security (ES|QL en priorité) avec intégration detection-rules / Detection-as-Code"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    # Outil officiel Elastic pour valider/déployer les TOML. Absent de PyPI :
+    # se déploie depuis le dépôt git (référence directe PEP 508), comme en CI.
+    "detection-rules @ git+https://github.com/elastic/detection-rules.git",
+]
+
+[project.scripts]
+rosetta = "rosetta.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
