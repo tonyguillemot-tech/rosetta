@@ -62,12 +62,19 @@ jobs:
           # la validation de schéma et de structure TOML reste active.
           DR_BYPASS_ESQL_METADATA_VALIDATION: "1"
         run: |
-          set -e
+          fail=0
           for f in custom-rules/rules/*.toml; do
             echo "::group::Validation $f"
-            python -m detection_rules view-rule "$f" || echo "::warning::Schéma à revoir pour $f"
+            if ! python -m detection_rules view-rule "$f"; then
+              echo "::error file=$f::detection-rules a rejeté $f"
+              fail=$((fail + 1))
+            fi
             echo "::endgroup::"
           done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::$fail règle(s) invalide(s) selon detection-rules — build en échec."
+            exit 1
+          fi
 
   esql-live-validation:
     name: Validation ES|QL live (optionnel, stack éphémère)
