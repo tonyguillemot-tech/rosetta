@@ -142,6 +142,48 @@ def test_toml_output_parses(rtype):
     parsed = tomllib.loads(toml_text)
     assert parsed["rule"]["name"] == f"rule {rtype}"
     assert "type" in parsed["rule"]
+    # note et tags doivent rester au niveau [rule], pas être absorbés par une
+    # éventuelle sous-table ([rule.threshold] / [rule.new_terms]).
+    assert isinstance(parsed["rule"]["note"], str)
+    assert isinstance(parsed["rule"]["tags"], list)
+
+
+def test_threshold_subtable_does_not_absorb_note_tags():
+    res = _conv({
+        "name": "fl", "type": "flatline", "index": "logs-*",
+        "threshold": 1, "query_key": "agent.id", "timeframe": {"minutes": 10},
+    })
+    parsed = tomllib.loads(to_toml(res))
+    assert "note" in parsed["rule"] and "tags" in parsed["rule"]
+    assert "note" not in parsed["rule"]["threshold"]
+    assert "tags" not in parsed["rule"]["threshold"]
+
+
+def test_new_terms_subtable_does_not_absorb_note_tags():
+    res = _conv({
+        "name": "nt", "type": "new_term", "index": "logs-*",
+        "fields": ["process.name"],
+    })
+    parsed = tomllib.loads(to_toml(res))
+    assert "note" in parsed["rule"] and "tags" in parsed["rule"]
+    assert "note" not in parsed["rule"]["new_terms"]
+
+
+@pytest.mark.parametrize("rtype,extra", [
+    ("frequency", {"num_events": 5, "timeframe": {"minutes": 5}}),
+    ("cardinality", {"cardinality_field": "host.name", "max_cardinality": 5}),
+    ("metric_aggregation", {"metric_agg_key": "b", "metric_agg_type": "avg",
+                            "max_threshold": 1}),
+    ("percentage_match", {"match_bucket_filter": [{"term": {"x": 1}}],
+                          "max_percentage": 30}),
+    ("spike", {"spike_height": 2, "threshold_cur": 10, "timeframe": {"hours": 1}}),
+    ("change", {"compare_key": "geo.country", "query_key": "user.name"}),
+])
+def test_aggregating_esql_ends_with_keep(rtype, extra):
+    """detection-rules rejette une requête ES|QL agrégeante sans clause KEEP."""
+    res = _conv({"name": rtype, "type": rtype, "index": "logs-*", **extra})
+    assert res.strategy == RuleStrategy.ESQL
+    assert "| KEEP" in res.esql_query
 
 
 # --- Détection de scripts / code custom -----------------------------------
@@ -275,7 +317,7 @@ def test_sanitize_preserves_debug_info():
     out = _sanitize_one(raw)
     assert out["source_type"] == "frequency"
     assert out["strategy"] == "esql"
-    assert out["esql_skeleton"]["pipeline"] == ["FROM", "WHERE", "STATS", "WHERE"]
+    assert out["esql_skeleton"]["pipeline"] == ["FROM", "WHERE", "STATS", "WHERE", "KEEP"]
     assert out["filter_shapes"][0]["kind"] == "terms"
     assert out["filter_shapes"][0]["arity"] == 3  # arité OK, valeurs absentes
     assert out["uses_query_key"] is True

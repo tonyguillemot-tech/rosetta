@@ -71,7 +71,11 @@ def to_toml(result: ConversionResult, *, author: str = "Migrated from ElastAlert
     lines.append(f'from = "{result.lookback}"')
     lines.append(f'interval = "{result.interval}"')
 
+    # Les sous-tables ([rule.threshold], [rule.new_terms]) sont collectées à
+    # part et émises EN DERNIER : en TOML, toute clé scalaire (note, tags…)
+    # placée après un en-tête de table lui serait rattachée par erreur.
     strat = result.strategy
+    subtables: list[str] = []
     if strat == RuleStrategy.ESQL:
         lines.append('type = "esql"')
         lines.append('language = "esql"')
@@ -82,7 +86,7 @@ def to_toml(result: ConversionResult, *, author: str = "Migrated from ElastAlert
         lines.append('type = "query"')
         lines.append('language = "kuery"')
         lines.append(f"index = {_indices_list(rule.index)!r}".replace("'", '"'))
-        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*")}"')
+        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*:*")}"')
     elif strat == RuleStrategy.EQL:
         lines.append('type = "eql"')
         lines.append('language = "eql"')
@@ -94,30 +98,30 @@ def to_toml(result: ConversionResult, *, author: str = "Migrated from ElastAlert
         lines.append('type = "threshold"')
         lines.append('language = "kuery"')
         lines.append(f"index = {_indices_list(rule.index)!r}".replace("'", '"'))
-        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*")}"')
+        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*:*")}"')
         th = result.threshold or {}
-        lines.append("")
-        lines.append("[rule.threshold]")
-        lines.append(f"field = {th.get('field', [])!r}".replace("'", '"'))
-        lines.append(f"value = {th.get('value', 1)}")
+        subtables.append("")
+        subtables.append("[rule.threshold]")
+        subtables.append(f"field = {th.get('field', [])!r}".replace("'", '"'))
+        subtables.append(f"value = {th.get('value', 1)}")
     elif strat == RuleStrategy.NEW_TERMS:
         lines.append('type = "new_terms"')
         lines.append('language = "kuery"')
         lines.append(f"index = {_indices_list(rule.index)!r}".replace("'", '"'))
-        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*")}"')
-        lines.append("")
-        lines.append("[rule.new_terms]")
-        lines.append('field = "new_terms_fields"')
-        lines.append(f"value = {result.new_terms_fields or []!r}".replace("'", '"'))
-        lines.append("")
-        lines.append("[[rule.new_terms.history_window_start]]")
-        lines.append('field = "history_window_start"')
-        lines.append(f'value = "{result.history_window or "now-14d"}"')
+        lines.append(f'query = "{_toml_basic_string(result.kql_query or "*:*")}"')
+        subtables.append("")
+        subtables.append("[rule.new_terms]")
+        subtables.append('field = "new_terms_fields"')
+        subtables.append(f"value = {result.new_terms_fields or []!r}".replace("'", '"'))
+        subtables.append("")
+        subtables.append("[[rule.new_terms.history_window_start]]")
+        subtables.append('field = "history_window_start"')
+        subtables.append(f'value = "{result.history_window or "now-14d"}"')
     else:  # MANUAL
         lines.append('type = "query"')
         lines.append('language = "kuery"')
         lines.append(f"index = {_indices_list(rule.index)!r}".replace("'", '"'))
-        lines.append('query = "*"')
+        lines.append('query = "*:*"')
         lines.append('enabled = false')
 
     # --- note de migration (champ note, markdown) ---
@@ -153,5 +157,9 @@ def to_toml(result: ConversionResult, *, author: str = "Migrated from ElastAlert
     if result.metadata.get("custom_detection_code"):
         tags.append('"Review: Custom Detection Code"')
     lines.append(f"tags = [{', '.join(tags)}]")
+
+    # Sous-tables en dernier (cf. commentaire plus haut) : elles doivent suivre
+    # toutes les clés scalaires de [rule], note et tags compris.
+    lines.extend(subtables)
 
     return "\n".join(lines) + "\n"

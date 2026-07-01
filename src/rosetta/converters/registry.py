@@ -53,6 +53,20 @@ def _where(rule: ElastAlertRule, res: ConversionResult) -> str:
     return f"| WHERE {clause}" if clause else ""
 
 
+def _query_keys(query_key) -> list[str]:
+    """Normalise `query_key` (str | list | None) en liste de champs."""
+    if not query_key:
+        return []
+    return [query_key] if isinstance(query_key, str) else list(query_key)
+
+
+def _keep(cols: list[str]) -> str:
+    """Clause finale `| KEEP …`. Requise par detection-rules pour les règles
+    ES|QL : sans elle, `view-rule` rejette la requête (EsqlSemanticError)."""
+    cols = [c for c in cols if c]
+    return f"| KEEP {', '.join(cols)}" if cols else ""
+
+
 # ---------------------------------------------------------------------------
 # Converters
 # ---------------------------------------------------------------------------
@@ -97,16 +111,15 @@ def convert_frequency(rule: ElastAlertRule) -> ConversionResult:
     num_events = rule.get("num_events", 1)
     query_key = rule.get("query_key")
     where = _where(rule, res)
-    by = ""
-    if query_key:
-        keys = query_key if isinstance(query_key, list) else [query_key]
-        by = " BY " + ", ".join(keys)
+    keys = _query_keys(query_key)
+    by = (" BY " + ", ".join(keys)) if keys else ""
     res.esql_query = "\n".join(
         c for c in (
             _from_clause(rule),
             where,
             f"| STATS event_count = COUNT(*){by}",
             f"| WHERE event_count >= {num_events}",
+            _keep(keys + ["event_count"]),
         ) if c
     )
     res.metadata["num_events"] = num_events
@@ -121,10 +134,8 @@ def convert_cardinality(rule: ElastAlertRule) -> ConversionResult:
     max_c = rule.get("max_cardinality")
     min_c = rule.get("min_cardinality")
     where = _where(rule, res)
-    by = ""
-    if query_key:
-        keys = query_key if isinstance(query_key, list) else [query_key]
-        by = " BY " + ", ".join(keys)
+    keys = _query_keys(query_key)
+    by = (" BY " + ", ".join(keys)) if keys else ""
     cmp = ""
     if max_c is not None:
         cmp = f"| WHERE distinct_count > {max_c}"
@@ -138,6 +149,7 @@ def convert_cardinality(rule: ElastAlertRule) -> ConversionResult:
             where,
             f"| STATS distinct_count = COUNT_DISTINCT({card_field}){by}",
             cmp,
+            _keep(keys + ["distinct_count"]),
         ) if c
     )
     return res
@@ -154,10 +166,8 @@ def convert_metric_aggregation(rule: ElastAlertRule) -> ConversionResult:
     esql_agg = {"AVG": "AVG", "SUM": "SUM", "MIN": "MIN", "MAX": "MAX",
                 "CARDINALITY": "COUNT_DISTINCT"}.get(agg_type, "AVG")
     where = _where(rule, res)
-    by = ""
-    if query_key:
-        keys = query_key if isinstance(query_key, list) else [query_key]
-        by = " BY " + ", ".join(keys)
+    keys = _query_keys(query_key)
+    by = (" BY " + ", ".join(keys)) if keys else ""
     cmp = ""
     if max_t is not None:
         cmp = f"| WHERE metric_value > {max_t}"
@@ -169,6 +179,7 @@ def convert_metric_aggregation(rule: ElastAlertRule) -> ConversionResult:
             where,
             f"| STATS metric_value = {esql_agg}({agg_key}){by}",
             cmp,
+            _keep(keys + ["metric_value"]),
         ) if c
     )
     return res
@@ -206,10 +217,8 @@ def convert_spike(rule: ElastAlertRule) -> ConversionResult:
     spike_height = rule.get("spike_height", 2)
     threshold_cur = rule.get("threshold_cur", 0)
     where = _where(rule, res)
-    by = ""
-    if query_key:
-        keys = query_key if isinstance(query_key, list) else [query_key]
-        by = ", " + ", ".join(keys)
+    keys = _query_keys(query_key)
+    by = (", " + ", ".join(keys)) if keys else ""
     res.esql_query = "\n".join(
         c for c in (
             _from_clause(rule),
@@ -217,6 +226,7 @@ def convert_spike(rule: ElastAlertRule) -> ConversionResult:
             "| EVAL bucket = DATE_TRUNC(1 hour, @timestamp)",
             f"| STATS event_count = COUNT(*) BY bucket{by}",
             f"| WHERE event_count >= {max(threshold_cur, 1)}",
+            _keep(["bucket"] + keys + ["event_count"]),
         ) if c
     )
     res.warnings.append(
@@ -255,23 +265,20 @@ def convert_change(rule: ElastAlertRule) -> ConversionResult:
     query_key = rule.get("query_key", "")
     fields = compound if isinstance(compound, list) else [compound] if compound else []
     where = _where(rule, res)
-    keys = query_key if isinstance(query_key, list) else [query_key] if query_key else []
+    keys = _query_keys(query_key)
     by = (" BY " + ", ".join(keys)) if keys else ""
-    distinct_lines = "\n".join(
-        f"| EVAL _watch_{i} = {f}" for i, f in enumerate(fields)
-    )
     stats = ", ".join(
         f"changes_{i} = COUNT_DISTINCT({f})" for i, f in enumerate(fields)
     ) or "changes_0 = COUNT_DISTINCT(*)"
-    where_changes = " OR ".join(
-        f"changes_{i} > 1" for i in range(max(len(fields), 1))
-    )
+    change_cols = [f"changes_{i}" for i in range(max(len(fields), 1))]
+    where_changes = " OR ".join(f"{c} > 1" for c in change_cols)
     res.esql_query = "\n".join(
         c for c in (
             _from_clause(rule),
             where,
             f"| STATS {stats}{by}",
             f"| WHERE {where_changes}",
+            _keep(keys + change_cols),
         ) if c
     )
     res.warnings.append(
@@ -290,10 +297,8 @@ def convert_percentage_match(rule: ElastAlertRule) -> ConversionResult:
     match_filter = rule.get("match_bucket_filter", [])
     where = _where(rule, res)
     match_clause = filter_to_esql(match_filter, res.warnings) if match_filter else "true"
-    by = ""
-    if query_key:
-        keys = query_key if isinstance(query_key, list) else [query_key]
-        by = " BY " + ", ".join(keys)
+    keys = _query_keys(query_key)
+    by = (" BY " + ", ".join(keys)) if keys else ""
     cmp = ""
     if max_pct is not None:
         cmp = f"| WHERE match_pct > {max_pct}"
@@ -307,6 +312,7 @@ def convert_percentage_match(rule: ElastAlertRule) -> ConversionResult:
             f"| STATS matched = SUM(is_match), total = COUNT(*){by}",
             "| EVAL match_pct = 100.0 * matched / total",
             cmp,
+            _keep(keys + ["match_pct"]),
         ) if c
     )
     res.warnings.append("Conversion 'percentage_match' : vérifier le match_bucket_filter.")
