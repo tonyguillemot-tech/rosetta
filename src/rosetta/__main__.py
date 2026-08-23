@@ -14,8 +14,11 @@ import secrets
 import sys
 from pathlib import Path
 
+import yaml
+
 from .converters.registry import convert
 from .detection_rule.toml_writer import to_toml
+from .html_writer import report_to_html, share_to_html
 from .parser.elastalert import parse_directory, parse_file
 from .sanitize import sanitize_report
 from .scoring.confidence import confidence_band, score
@@ -77,6 +80,12 @@ def cmd_report(args: argparse.Namespace) -> int:
             "band": confidence_band(res.confidence),
             "needs_review": res.needs_review,
             "warnings": res.warnings,
+            "esql_query": res.esql_query,
+            "kql_query": res.kql_query,
+            "source_yaml": yaml.dump(
+                res.source.raw, allow_unicode=True,
+                default_flow_style=False, sort_keys=False,
+            ),
             "factors": [
                 {"label": f.label, "delta": round(f.delta, 3), "detail": f.detail}
                 for f in res.factors
@@ -84,6 +93,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         })
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
+    elif args.html:
+        source_str = ", ".join(args.inputs)
+        html = report_to_html(report, source_paths=source_str)
+        if args.html is True:
+            print(html)
+        else:
+            Path(args.html).write_text(html, encoding="utf-8")
+            print(f"Rapport HTML écrit dans {args.html} ({len(report)} règle(s)).",
+                  file=sys.stderr)
     else:
         _print_table(report)
     return 0
@@ -132,16 +150,27 @@ def cmd_share(args: argparse.Namespace) -> int:
 
     report = sanitize_report(results, secret, parse_errors=parse_errors)
 
-    text = json.dumps(report, indent=2, ensure_ascii=False)
-    if args.output:
-        Path(args.output).write_text(text, encoding="utf-8")
-        print(f"Rapport sanitisé écrit dans {args.output} "
-              f"({report['rule_count']} règle(s), {parse_errors} erreur(s) de parsing).",
-              file=sys.stderr)
-        print("Aucune donnée sensible : noms, valeurs, champs et requêtes sont exclus.",
-              file=sys.stderr)
+    if args.html:
+        output = share_to_html(report)
+        dest = args.html if args.html is not True else args.output
+        if dest:
+            Path(dest).write_text(output, encoding="utf-8")
+            print(f"Rapport HTML sanitisé écrit dans {dest} "
+                  f"({report['rule_count']} règle(s), {parse_errors} erreur(s) de parsing).",
+                  file=sys.stderr)
+        else:
+            print(output)
     else:
-        print(text)
+        text = json.dumps(report, indent=2, ensure_ascii=False)
+        if args.output:
+            Path(args.output).write_text(text, encoding="utf-8")
+            print(f"Rapport sanitisé écrit dans {args.output} "
+                  f"({report['rule_count']} règle(s), {parse_errors} erreur(s) de parsing).",
+                  file=sys.stderr)
+            print("Aucune donnée sensible : noms, valeurs, champs et requêtes sont exclus.",
+                  file=sys.stderr)
+        else:
+            print(text)
     return 0
 
 
@@ -161,6 +190,8 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="Afficher un rapport de confiance sans écrire")
     r.add_argument("inputs", nargs="+")
     r.add_argument("--json", action="store_true", help="Sortie JSON")
+    r.add_argument("--html", nargs="?", const=True, metavar="FILE",
+                   help="Sortie HTML (optionnel : chemin du fichier, sinon stdout)")
     r.set_defaults(func=cmd_report)
 
     s = sub.add_parser(
@@ -173,6 +204,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--hmac-secret", default=None,
                    help="Secret pour des empreintes stables entre exécutions "
                         "(sinon aléatoire ; aussi via ROSETTA_HMAC_SECRET)")
+    s.add_argument("--html", nargs="?", const=True, metavar="FILE",
+                   help="Sortie HTML au lieu de JSON (optionnel : chemin du fichier)")
     s.set_defaults(func=cmd_share)
 
     return p

@@ -1,28 +1,23 @@
-# Rosetta — Migration ElastAlert → Elastic Security
+# Rosetta — ElastAlert → Elastic Security Migration
 
-> Traduit fidèlement vos règles de détection d'un langage à l'autre, avec un
-> score de confiance pour chaque migration.
+Rosetta converts **ElastAlert** detection rules (YAML) into **Elastic Security** rules,
+targeting **ES|QL** as the primary output format. Rules are written to **TOML** files
+compatible with [`elastic/detection-rules`](https://github.com/elastic/detection-rules),
+enabling a **Detection-as-Code (DaC)** workflow. Every migrated rule receives an
+**explainable confidence score** so you know exactly what needs manual review.
 
-Convertit des règles **ElastAlert** (YAML) en règles **Elastic Security**, en
-privilégiant **ES|QL**, avec sortie au format **TOML** compatible
-[`elastic/detection-rules`](https://github.com/elastic/detection-rules) pour
-une approche **Detection-as-Code (DaC)**. Chaque règle migrée reçoit un
-**score de confiance**.
+## Why ES|QL first
 
-## Pourquoi ES|QL en priorité
+ES|QL natively expresses the "filter → aggregate (`STATS … BY`) → filter on the
+computed value" pattern that underlies most ElastAlert rule types (frequency,
+cardinality, metric). When ES|QL is not the right fit, Rosetta falls back to the
+most semantically faithful native Elastic Security rule type.
 
-ES|QL exprime nativement la logique « filtrer → agréger (`STATS … BY`) →
-re-filtrer sur la valeur calculée » qui sous-tend la majorité des règles
-ElastAlert (frequency, cardinality, metric). Les règles ES|QL sont un type de
-règle de détection à part entière dans Elastic Security (`type = "esql"`).
-Quand ES|QL n'est pas le bon outil, `rosetta` retombe sur le type natif le plus
-fidèle.
+## ElastAlert type coverage
 
-## Couverture des types ElastAlert
-
-| Type ElastAlert      | Stratégie Elastic        | Confiance typique |
-|----------------------|--------------------------|-------------------|
-| `any`                | ES\|QL (non-agrégeante)  | ~90 % |
+| ElastAlert type      | Elastic strategy         | Typical confidence |
+|----------------------|--------------------------|--------------------|
+| `any`                | ES\|QL (non-aggregating) | ~90 % |
 | `frequency`          | ES\|QL `STATS COUNT()`   | ~88 % |
 | `blacklist`/`whitelist` | ES\|QL `IN` / `NOT IN` | ~90 % |
 | `cardinality`        | ES\|QL `COUNT_DISTINCT()`| ~90 % |
@@ -31,30 +26,29 @@ fidèle.
 | `percentage_match`   | ES\|QL ratio via `EVAL`  | ~55 % |
 | `change`             | ES\|QL `COUNT_DISTINCT`  | ~45 % |
 | `flatline`           | Threshold rule (native)  | ~45 % |
-| `spike`              | ES\|QL approx. / ML       | ~30 % |
-| *(inconnu)*          | `manual` (revue requise) | ~10 % |
+| `spike`              | ES\|QL approx. / ML      | ~30 % |
+| *(unknown)*          | `manual` (review required) | ~10 % |
 
-Les types comportementaux (`spike`, `flatline`, `change`) n'ont **pas**
-d'équivalent sémantique strict : `rosetta` produit une approximation, baisse le
-score et ajoute un avertissement explicite dans le champ `note` de la règle.
+Behavioral types (`spike`, `flatline`, `change`) have no strict semantic equivalent.
+Rosetta produces an approximation, lowers the confidence score, and adds an explicit
+warning in the rule's `note` field.
 
-## Scripts et code custom ElastAlert
+## Custom scripts and code in ElastAlert
 
-ElastAlert permet d'injecter du Python ou des scripts externes à plusieurs
-endroits. `rosetta` les détecte et ajuste le score selon que c'est la **détection**
-ou seulement l'**action** qui est en code :
+ElastAlert allows injecting Python or external scripts at several points. Rosetta
+detects them and adjusts the confidence score depending on whether the **detection
+logic** or only the **alerting action** is in code:
 
-| Cas ElastAlert | Détecté comme | Impact migration |
+| ElastAlert case | Detected as | Migration impact |
 |---|---|---|
-| `type: module.file.RuleName` (type custom) | `custom_rule_type` | **Bloquant** : la logique de détection est en code → stratégie `manual`, règle générée `enabled = false`, confiance ~5 % |
-| `alert: command` + `command: [...]` | `command_alerter` | La détection migre ; le script d'action est listé dans `note` pour recréation via connector. Pénalité modérée |
-| `alert: module.file.AlertName` (alerter custom) | `custom_alerter` | Idem command : détection migrée, action à recréer |
-| `match_enhancements: [module.file.Enh]` | `enhancement` | Détection migrée, enhancement Python à revoir. Pénalité modérée |
+| `type: module.file.RuleName` (custom type) | `custom_rule_type` | **Blocking**: detection logic is in code → `manual` strategy, rule generated with `enabled = false`, confidence ~5 % |
+| `alert: command` + `command: [...]` | `command_alerter` | Detection migrates; the action script is listed in `note` for recreation via connector. Moderate penalty |
+| `alert: module.file.AlertName` (custom alerter) | `custom_alerter` | Same as command: detection migrates, action to recreate |
+| `match_enhancements: [module.file.Enh]` | `enhancement` | Detection migrates, Python enhancement to review. Moderate penalty |
 
-Les alerters intégrés (`email`, `slack`, `jira`, `pagerduty`, …) ne sont **pas**
-considérés comme du code custom. Les règles concernées reçoivent des tags
-`Review: Custom Action` ou `Review: Custom Detection Code` et une section
-dédiée dans leur champ `note`.
+Built-in alerters (`email`, `slack`, `jira`, `pagerduty`, …) are never treated as
+custom code. Affected rules receive `Review: Custom Action` or
+`Review: Custom Detection Code` tags and a dedicated section in their `note` field.
 
 ## Installation
 
@@ -62,147 +56,135 @@ dédiée dans leur champ `note`.
 pip install -e ".[dev]"
 ```
 
-## Utilisation
+## Usage
 
-Rapport de confiance (sans écriture) :
-
-```bash
-python -m rosetta report examples/elastalert_rules
-python -m rosetta report examples/elastalert_rules --json   # pour l'automatisation
-```
-
-Génération des fichiers TOML :
+### Preview the migration (no files written)
 
 ```bash
-# Tout convertir
-python -m rosetta convert examples/elastalert_rules -o rules/
-
-# N'écrire que les règles au-dessus d'un seuil de confiance
-python -m rosetta convert examples/elastalert_rules -o rules/ --min-confidence 0.6
+python -m rosetta report /path/to/elastalert_rules
+python -m rosetta report /path/to/elastalert_rules --json   # machine-readable output
 ```
 
-## Collaboration sans partage de données sensibles
-
-Si tu améliores l'outil avec un client qui ne peut pas transmettre ses règles
-(confidentielles), il utilise la commande `share`. Elle produit un JSON conçu
-pour le débogage de l'outil, **sans aucune donnée métier** :
+### Generate TOML rule files
 
 ```bash
-# Côté client (sur ses règles confidentielles)
-python -m rosetta share /ses/regles/ -o rapport_partage.json
+# Convert all rules
+python -m rosetta convert /path/to/elastalert_rules -o output/rules/
+
+# Only write rules above a confidence threshold
+python -m rosetta convert /path/to/elastalert_rules -o output/rules/ --min-confidence 0.6
 ```
 
-Le client garde tout son détail en local. Le fichier `rapport_partage.json`
-qu'il t'envoie contient, par règle : le type source, la stratégie Elastic, le
-score et ses facteurs, les **catégories** d'avertissements, la **forme** des
-filtres (term/terms/range/lucene + arité), le **squelette** de la requête ES|QL
-(séquence des commandes, fonctions, opérateurs — sans identifiants ni valeurs),
-et une empreinte HMAC pour référencer une règle sans la nommer.
+### Import into Elastic Security
 
-Ce qui **ne sort jamais** : noms et descriptions de règles, noms de champs et
-d'index, valeurs des filtres (IP, utilisateurs, hosts, hashes), seuils métier,
-chemins de scripts, requêtes en clair. Le principe est « privacy by design » :
-la sortie ne reconstruit que des champs explicitement sûrs, donc une donnée
-non listée ne peut pas fuiter. Cinq tests automatisés (`test_sanitize_*`)
-vérifient l'absence de fuite à chaque exécution de la suite.
-
-Pour des empreintes stables entre deux envois (suivre une règle précise dans
-le temps), le client fixe un secret partagé :
+The generated TOML files follow the `[metadata]` / `[rule]` schema expected by
+`elastic/detection-rules`. To validate and deploy them:
 
 ```bash
-export ROSETTA_HMAC_SECRET="un-secret-convenu-entre-vous"
-python -m rosetta share /ses/regles/ -o rapport_partage.json
+# Local schema validation
+python -m detection_rules view-rule output/rules/my_rule.toml
+
+# Import into Kibana (custom rules)
+python -m detection_rules kibana import-rules -d output/rules/ --overwrite
 ```
 
-Avec ce JSON, tu peux reproduire un cas (recréer une règle ayant la même forme),
-comprendre pourquoi un score est bas, et corriger un bug de génération — le tout
-sans jamais voir les données du client.
+Place the files in your configured `CUSTOM_RULES_DIR`, then use
+`kibana import-rules` / `export-rules` to synchronize with Elastic Security.
 
-## Éprouver l'outil (corpus de test)
+## Confidence score
 
-Pour tester sur un grand volume, un générateur produit des règles ElastAlert
-variées (tous les types, filtres de complexité diverse, cas de scripts, et
-quelques cas dégénérés) :
+The score starts from a per-type base (reflecting how faithfully the semantics can
+be reproduced), then adjusts with concrete penalties and bonuses: filter translation
+warnings, Lucene `query_string` queries (converted on a best-effort basis), missing
+required fields, semantic gap on temporal rule types, and correct mapping of
+`query_key` onto `STATS … BY`.
+
+Confidence bands:
+
+| Band | Score |
+|------|-------|
+| **HIGH** | ≥ 85 % |
+| **MEDIUM** | ≥ 60 % |
+| **LOW** | ≥ 30 % |
+| **VERY LOW** | < 30 % |
+
+A rule is flagged for review when its strategy is `manual` or its confidence is
+below 60 %.
+
+## Sharing diagnostic data without exposing sensitive rules
+
+If your rules are confidential but you need to share diagnostic information (e.g.,
+when reporting a conversion issue), use the `share` command. It produces a JSON
+report designed for debugging — **no business data is included**:
+
+```bash
+python -m rosetta share /path/to/your/rules -o shared_report.json
+```
+
+For each rule the report contains: the source type, the Elastic strategy, the score
+and its factors, **categories** of warnings, the **shape** of filters
+(term/terms/range/lucene + arity), the **skeleton** of the ES|QL query (command
+sequence, functions, operators — no identifiers or values), and an HMAC fingerprint
+to reference a rule without naming it.
+
+What **never appears** in the output: rule names and descriptions, field and index
+names, filter values (IPs, users, hostnames, hashes), business thresholds, script
+paths, or raw queries. A field omitted from the safe-list cannot leak by design.
+
+To produce stable fingerprints across multiple runs (useful for tracking a specific
+rule over time), set a shared secret:
+
+```bash
+export ROSETTA_HMAC_SECRET="your-shared-secret"
+python -m rosetta share /path/to/your/rules -o shared_report.json
+```
+
+## Testing with a synthetic corpus
+
+To test on a large volume of rules, a generator creates varied ElastAlert rules
+covering all supported types, filters of varying complexity, custom script cases,
+and degenerate inputs:
 
 ```bash
 python tools/generate_corpus.py /tmp/corpus 300
 python -m rosetta report /tmp/corpus
 ```
 
-Tu peux aussi pointer l'outil vers de vraies règles publiques, par exemple le
-dossier `example_rules/` du dépôt [Yelp/elastalert](https://github.com/Yelp/elastalert)
-ou des règles Sigma converties au format ElastAlert. Le parser tolère certaines
-malformations YAML courantes (indentation parasite de premier niveau) et
-répare automatiquement quand c'est possible, en signalant l'opération sur
-`stderr`.
+You can also point Rosetta at real public rules — for example, the `example_rules/`
+folder from the [Yelp/elastalert](https://github.com/Yelp/elastalert) repository,
+or Sigma rules converted to ElastAlert format.
 
-Sur un corpus synthétique de 300 règles, ~82 % migrent en ES|QL, avec une
-confiance médiane autour de 88 % ; les types comportementaux (spike, flatline,
-change) et le code Python custom sont correctement isolés en confiance faible.
+The parser tolerates common YAML malformations (spurious top-level indentation) and
+repairs them automatically, reporting the operation on `stderr`.
 
-## Score de confiance
+On a synthetic corpus of 300 rules, ~82 % migrate to ES|QL with a median confidence
+around 88 %; behavioral types (spike, flatline, change) and custom Python code are
+correctly isolated with low confidence.
 
-Le score combine une base par type (sémantique reproductible ou non) puis des
-pénalités/bonus concrets : avertissements de traduction de filtres, requêtes
-Lucene/`query_string` (converties en best-effort), champs requis manquants,
-écart sémantique des règles temporelles, et bon mappage de `query_key` sur
-`STATS … BY`. Bandes : **ÉLEVÉE** (≥85 %), **MOYENNE** (≥60 %), **FAIBLE**
-(≥30 %), **TRÈS FAIBLE** (<30 %).
+## Known limitations
 
-Une règle est marquée *à revoir* si elle est `manual` ou sous 60 %.
-
-## Intégration detection-rules (DaC)
-
-Les TOML produits suivent le schéma `[metadata]` / `[rule]` attendu par
-`elastic/detection-rules`. Pour les valider et les déployer :
-
-```bash
-# Validation de schéma locale
-python -m detection_rules view-rule rules/ma_regle.toml
-
-# Import dans Kibana (custom rules)
-python -m detection_rules kibana import-rules -d rules/ --overwrite
-```
-
-Place les fichiers dans ton dossier `CUSTOM_RULES_DIR` configuré, puis utilise
-les commandes `kibana import-rules` / `export-rules` pour synchroniser avec
-Elastic Security.
-
-## CI GitHub Actions
-
-`.github/workflows/ci.yml` exécute :
-1. **unit-tests** — pytest + génération TOML + vérification de parsabilité ;
-2. **detection-rules-validation** — validation de chaque règle via la CLI
-   officielle Elastic ;
-3. **esql-live-validation** — placeholder pour la validation ES|QL contre une
-   stack éphémère (Elastic Container Project), à activer avec des secrets de
-   cluster.
+- `query_string` Lucene query conversion is best-effort (booleans, `field:value`,
+  lists, wildcards → `LIKE`). Complex queries are flagged for manual review.
+- `spike` does not reproduce the current-window / reference-window comparison;
+  consider an ML rule instead.
+- `flatline` detects absence; a Threshold rule detects a count exceeding a value —
+  the logic must be inverted and validated manually.
+- The `priority` → `severity` / `risk_score` mapping is heuristic.
 
 ## Architecture
 
 ```
 src/rosetta/
-├── parser/elastalert.py       # YAML ElastAlert -> modèle normalisé
-├── scripts.py                 # détection des scripts / code custom
-├── esql/translator.py         # filtres DSL/Lucene -> WHERE ES|QL & KQL
-├── converters/registry.py     # 1 converter par type ElastAlert
-├── scoring/confidence.py      # score de confiance explicable
-├── detection_rule/toml_writer.py  # modèle -> TOML detection-rules
-└── __main__.py                # CLI (convert / report)
+├── parser/elastalert.py           # YAML ElastAlert → normalized model
+├── scripts.py                     # custom script / code detection
+├── esql/translator.py             # DSL/Lucene filters → ES|QL WHERE & KQL
+├── converters/registry.py         # one converter per ElastAlert type
+├── scoring/confidence.py          # explainable confidence score
+├── detection_rule/toml_writer.py  # model → detection-rules TOML
+└── __main__.py                    # CLI (convert / report / share)
 ```
 
-## Limites connues
+## License
 
-- La conversion des requêtes `query_string` Lucene est best-effort (booléens,
-  `field:value`, listes, wildcards → `LIKE`). Les requêtes très complexes sont
-  signalées pour revue manuelle.
-- `spike` ne reproduit pas la comparaison fenêtre courante/référence ;
-  envisager une règle ML.
-- `flatline` détecte une absence ; une Threshold rule détecte un dépassement —
-  la logique doit être inversée et validée manuellement.
-- Le mapping `priority` ElastAlert → `severity`/`risk_score` est heuristique.
-
-## Licence
-
-Apache-2.0 pour l'outil. Les règles générées portent `Elastic License v2`
-(modifiable dans `toml_writer.py`).
+Apache-2.0 for the tool. Generated rules carry `Elastic License v2`
+(configurable in `toml_writer.py`).

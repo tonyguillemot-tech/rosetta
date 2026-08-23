@@ -1,7 +1,7 @@
-"""Converters : chaque fonction transforme une ElastAlertRule en ConversionResult.
+"""Converters: each function transforms an ElastAlertRule into a ConversionResult.
 
-Le registre CONVERTERS mappe le `type` ElastAlert vers son converter.
-Chaque converter choisit la meilleure stratégie Elastic et construit la requête.
+CONVERTERS maps the ElastAlert `type` to its converter function.
+Each converter picks the best Elastic strategy and builds the query.
 """
 from __future__ import annotations
 
@@ -21,12 +21,12 @@ def _from_clause(rule: ElastAlertRule) -> str:
 
 
 def _timeframe_to_lookback(rule: ElastAlertRule, default: str = "now-6m") -> str:
-    """Convertit le `timeframe` ElastAlert (dict) en fenêtre Elastic 'now-Xm'."""
+    """Converts the ElastAlert `timeframe` dict to an Elastic lookback string (e.g. 'now-6m').
+    Adds +1 unit as a safety margin."""
     tf = rule.get("timeframe")
     if isinstance(tf, dict):
         for unit, key in (("minutes", "m"), ("hours", "h"), ("days", "d"), ("seconds", "s")):
             if unit in tf:
-                # marge de sécurité de +1 unité pour le lookback
                 return f"now-{int(tf[unit]) + 1}{key}"
     return default
 
@@ -73,7 +73,7 @@ def _keep(cols: list[str]) -> str:
 
 
 def convert_any(rule: ElastAlertRule) -> ConversionResult:
-    """type: any -> ES|QL non-agrégeante (chaque event matché = 1 alerte)."""
+    """type: any -> non-aggregating ES|QL (each matched event produces one alert)."""
     res = _base_result(rule, RuleStrategy.ESQL)
     where = _where(rule, res)
     res.esql_query = (
@@ -95,7 +95,10 @@ def convert_blacklist_whitelist(rule: ElastAlertRule) -> ConversionResult:
         listclause = f"| WHERE {field} {op} ({joined})"
     else:
         listclause = ""
-        res.warnings.append("compare_key ou liste absente pour blacklist/whitelist.")
+        res.warnings.append(
+            "Missing compare_key or value list — no IN/NOT IN filter clause was generated. "
+            "Check your blacklist/whitelist rule definition."
+        )
     res.esql_query = "\n".join(
         c for c in (
             _from_clause(rule), where, listclause,
@@ -106,7 +109,7 @@ def convert_blacklist_whitelist(rule: ElastAlertRule) -> ConversionResult:
 
 
 def convert_frequency(rule: ElastAlertRule) -> ConversionResult:
-    """type: frequency -> ES|QL STATS COUNT() BY <query_key> | WHERE c >= num_events."""
+    """type: frequency -> ES|QL STATS COUNT() BY <query_key> | WHERE count >= num_events."""
     res = _base_result(rule, RuleStrategy.ESQL)
     num_events = rule.get("num_events", 1)
     query_key = rule.get("query_key")
@@ -127,7 +130,7 @@ def convert_frequency(rule: ElastAlertRule) -> ConversionResult:
 
 
 def convert_cardinality(rule: ElastAlertRule) -> ConversionResult:
-    """type: cardinality -> COUNT_DISTINCT(cardinality_field)."""
+    """type: cardinality -> ES|QL COUNT_DISTINCT(cardinality_field)."""
     res = _base_result(rule, RuleStrategy.ESQL)
     card_field = rule.get("cardinality_field")
     query_key = rule.get("query_key")
@@ -142,7 +145,10 @@ def convert_cardinality(rule: ElastAlertRule) -> ConversionResult:
     elif min_c is not None:
         cmp = f"| WHERE distinct_count < {min_c}"
     if not card_field:
-        res.warnings.append("cardinality_field manquant.")
+        res.warnings.append(
+            "cardinality_field is missing — COUNT_DISTINCT(*) used as a fallback. "
+            "Verify the generated query."
+        )
     res.esql_query = "\n".join(
         c for c in (
             _from_clause(rule),
@@ -186,31 +192,33 @@ def convert_metric_aggregation(rule: ElastAlertRule) -> ConversionResult:
 
 
 def convert_new_term(rule: ElastAlertRule) -> ConversionResult:
-    """type: new_term -> règle native New Terms (pas ES|QL)."""
+    """type: new_term -> native New Terms rule (not ES|QL)."""
     res = _base_result(rule, RuleStrategy.NEW_TERMS)
     fields = rule.get("fields", [])
     if isinstance(fields, str):
         fields = [fields]
     res.new_terms_fields = fields
     res.kql_query = filter_to_kql(rule.filters, res.warnings)
-    # window ElastAlert: terms_window_size (jours) par défaut 30
+    # ElastAlert terms_window_size defaults to 30 days
     window = rule.get("terms_window_size", {"days": 30})
     if isinstance(window, dict) and "days" in window:
         res.history_window = f"now-{window['days']}d"
     else:
         res.history_window = "now-14d"
     if not fields:
-        res.warnings.append("Aucun champ 'fields' défini pour new_term.")
+        res.warnings.append(
+            "No 'fields' defined for this new_term rule — "
+            "the New Terms rule will have no tracked fields."
+        )
     return res
 
 
 def convert_spike(rule: ElastAlertRule) -> ConversionResult:
-    """type: spike -> ES|QL avec deux fenêtres + ratio. Conversion partielle.
+    """type: spike -> approximate ES|QL with two time windows + ratio.
 
-    ElastAlert compare la fenêtre courante à la précédente (spike_height).
-    ES|QL ne gère pas nativement deux fenêtres glissantes dans une règle de
-    détection planifiée ; on produit une approximation par DATE_TRUNC + ratio
-    et on signale que la sémantique diffère.
+    ElastAlert compares the current window against a reference window (spike_height).
+    Scheduled ES|QL rules cannot natively compare two sliding windows, so this
+    produces a DATE_TRUNC-based approximation and flags the semantic difference.
     """
     res = _base_result(rule, RuleStrategy.ESQL)
     query_key = rule.get("query_key")
@@ -230,17 +238,17 @@ def convert_spike(rule: ElastAlertRule) -> ConversionResult:
         ) if c
     )
     res.warnings.append(
-        f"Conversion 'spike' approximative : la comparaison fenêtre courante/référence "
-        f"(spike_height={spike_height}) n'est pas reproduite à l'identique. "
-        "Envisager une règle ML ou un seuil ajusté."
+        f"'spike' converted approximately: the current-window vs reference-window "
+        f"comparison (spike_height={spike_height}) cannot be reproduced exactly in ES|QL. "
+        "Consider using an ML rule or a manually tuned threshold instead."
     )
     res.metadata["spike_height"] = spike_height
     return res
 
 
 def convert_flatline(rule: ElastAlertRule) -> ConversionResult:
-    """type: flatline -> détection d'absence. Mappé sur Threshold rule native
-    (un seuil bas) car ES|QL ne détecte pas trivialement l'absence d'événements."""
+    """type: flatline -> absence detection, mapped to a native Threshold rule.
+    ES|QL cannot trivially detect absence of events within a time window."""
     res = _base_result(rule, RuleStrategy.THRESHOLD)
     threshold = rule.get("threshold", 1)
     query_key = rule.get("query_key")
@@ -250,16 +258,16 @@ def convert_flatline(rule: ElastAlertRule) -> ConversionResult:
         "value": int(threshold),
     }
     res.warnings.append(
-        "Conversion 'flatline' : ElastAlert alerte sur l'ABSENCE d'événements sous "
-        "le seuil. Une Threshold rule alerte sur le DÉPASSEMENT. Inverser la logique "
-        "(ex. via une règle de monitoring/absence) ou valider manuellement."
+        "'flatline' alert logic is inverted: ElastAlert fires when the event count "
+        "drops BELOW the threshold; a Threshold rule fires when it EXCEEDS it. "
+        "Invert the logic (e.g. use a suppression or absence-detection rule) or validate manually."
     )
     return res
 
 
 def convert_change(rule: ElastAlertRule) -> ConversionResult:
-    """type: change -> détecte un changement de valeur d'un champ par entité.
-    Approximé en ES|QL par COUNT_DISTINCT du champ surveillé par query_key."""
+    """type: change -> detects a field-value change per entity (query_key).
+    Approximated in ES|QL via COUNT_DISTINCT on the monitored field."""
     res = _base_result(rule, RuleStrategy.ESQL)
     compound = rule.get("compound_compare_key") or rule.get("compare_key")
     query_key = rule.get("query_key", "")
@@ -282,14 +290,15 @@ def convert_change(rule: ElastAlertRule) -> ConversionResult:
         ) if c
     )
     res.warnings.append(
-        "Conversion 'change' approximative : détecte la présence de >1 valeur "
-        "distincte sur la fenêtre, sans ordonnancement temporel exact."
+        "'change' type approximated: detects >1 distinct value for the compared field "
+        "within the time window — no strict temporal ordering is preserved. "
+        "Verify this captures the field-change semantics you need."
     )
     return res
 
 
 def convert_percentage_match(rule: ElastAlertRule) -> ConversionResult:
-    """type: percentage_match -> ratio match/total via EVAL."""
+    """type: percentage_match -> match/total ratio computed via EVAL + CASE()."""
     res = _base_result(rule, RuleStrategy.ESQL)
     query_key = rule.get("query_key")
     max_pct = rule.get("max_percentage")
@@ -315,15 +324,18 @@ def convert_percentage_match(rule: ElastAlertRule) -> ConversionResult:
             _keep(keys + ["match_pct"]),
         ) if c
     )
-    res.warnings.append("Conversion 'percentage_match' : vérifier le match_bucket_filter.")
+    res.warnings.append(
+        "'percentage_match': the match_bucket_filter was translated to an ES|QL CASE() "
+        "expression — verify the generated EVAL clause matches your original intent."
+    )
     return res
 
 
 def convert_unknown(rule: ElastAlertRule) -> ConversionResult:
     res = _base_result(rule, RuleStrategy.MANUAL)
     res.warnings.append(
-        f"Type ElastAlert '{rule.rule_type}' non supporté automatiquement. "
-        "Migration manuelle requise."
+        f"ElastAlert type '{rule.rule_type}' is not supported for automatic conversion. "
+        "Manual migration required."
     )
     return res
 
@@ -344,8 +356,7 @@ CONVERTERS: dict[str, Callable[[ElastAlertRule], ConversionResult]] = {
 
 
 def convert(rule: ElastAlertRule) -> ConversionResult:
-    # Si la logique de détection est en code Python custom, aucune conversion
-    # automatique n'est possible : on force la revue manuelle.
+    # Custom detection code in the rule type blocks automatic conversion entirely.
     analysis = rule.script_analysis
     if analysis is not None and analysis.blocks_detection:
         res = _base_result(rule, RuleStrategy.MANUAL)
@@ -358,8 +369,8 @@ def convert(rule: ElastAlertRule) -> ConversionResult:
     converter = CONVERTERS.get(rule.rule_type, convert_unknown)
     result = converter(rule)
 
-    # Propager les findings d'ACTION custom (n'empêchent pas la détection de
-    # migrer, mais l'action devra être recréée côté Elastic).
+    # Propagate custom ACTION findings (don't block detection migration,
+    # but the action must be recreated on the Elastic side).
     if analysis is not None and analysis.has_any:
         for f in analysis.findings:
             if not f.blocks_detection:

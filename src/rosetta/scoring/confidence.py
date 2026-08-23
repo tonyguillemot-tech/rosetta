@@ -1,14 +1,13 @@
-"""Score de confiance : estime la probabilité qu'une règle migre correctement.
+"""Confidence score: estimates how accurately a rule can be migrated automatically.
 
-Le score part d'une base par stratégie/type, puis applique des pénalités et
-bonus selon des signaux concrets (warnings de traduction, présence des champs
-requis, complexité des filtres, sémantique préservée).
+The score starts from a per-type base, then applies concrete penalties and bonuses:
+translation warnings, required-field coverage, filter complexity, and semantic fidelity.
 """
 from __future__ import annotations
 
 from ..models import ConfidenceFactor, ConversionResult, RuleStrategy
 
-# Base de confiance par type ElastAlert (sémantique reproductible en Elastic)
+# Base confidence per ElastAlert type (reflects how faithfully the semantics can be reproduced)
 BASE_BY_TYPE: dict[str, float] = {
     "any": 0.95,
     "blacklist": 0.90,
@@ -30,25 +29,24 @@ def score(result: ConversionResult) -> ConversionResult:
 
     base = BASE_BY_TYPE.get(rule.rule_type, 0.20)
     factors.append(ConfidenceFactor("base_type", base,
-                                    f"Base pour type '{rule.rule_type}'"))
+                                    f"Base confidence for type '{rule.rule_type}'"))
 
-    # Stratégie manuelle = confiance très faible
+    # Manual strategy = very low confidence
     if result.strategy == RuleStrategy.MANUAL:
-        # Distinguer le code de détection custom (le pire cas) du type inconnu.
+        # Distinguish custom detection code (worst case) from unknown type.
         if result.metadata.get("custom_detection_code"):
             result.confidence = 0.05
             factors.append(ConfidenceFactor(
                 "custom_detection_code", -base + 0.05,
-                "Logique de détection en Python custom : non migrable automatiquement"))
+                "Detection logic is in custom Python code — cannot be migrated automatically"))
         else:
             result.confidence = 0.10
             factors.append(ConfidenceFactor("manual", -base + 0.10,
-                                            "Migration manuelle requise"))
+                                            "Unknown or unsupported type — manual migration required"))
         result.factors = factors
         return result
 
-    # Actions / enhancements custom : la détection migre mais une partie du
-    # comportement (l'action) devra être recréée -> pénalité graduée.
+    # Custom actions/enhancements: detection migrates but the action must be recreated.
     analysis = rule.script_analysis
     if analysis is not None and analysis.has_any:
         n_actions = sum(
@@ -60,52 +58,52 @@ def score(result: ConversionResult) -> ConversionResult:
             pen = min(0.05 * n_actions, 0.12)
             factors.append(ConfidenceFactor(
                 "custom_action", -pen,
-                f"{n_actions} action(s) custom (command/alerter) à recréer côté Elastic"))
+                f"{n_actions} custom action(s) (command/alerter) must be recreated as Elastic connectors"))
         if n_enh:
             pen = min(0.06 * n_enh, 0.15)
             factors.append(ConfidenceFactor(
                 "enhancement", -pen,
-                f"{n_enh} match_enhancement(s) Python à revoir manuellement"))
+                f"{n_enh} Python match_enhancement(s) — must be reviewed and ported manually"))
 
-    # Pénalité par warning de traduction
+    # Penalty per conversion warning
     n_warn = len(result.warnings)
     if n_warn:
         penalty = min(0.10 * n_warn, 0.30)
         factors.append(ConfidenceFactor(
-            "warnings", -penalty, f"{n_warn} avertissement(s) de conversion"))
+            "warnings", -penalty, f"{n_warn} conversion warning(s)"))
 
-    # Filtres : Lucene complexe baisse la confiance
+    # Lucene query_string filters reduce confidence (best-effort translation)
     has_lucene = any(
         "query" in f or "query_string" in f for f in rule.filters
     )
     if has_lucene:
         factors.append(ConfidenceFactor(
             "lucene_filter", -0.05,
-            "Filtre Lucene/query_string converti en best-effort"))
+            "Lucene query_string filter translated on a best-effort basis — complex queries may not match exactly"))
 
-    # Bonus : aucun filtre complexe, requête simple
+    # Bonus: only structured filters, no Lucene
     if rule.filters and not has_lucene:
         factors.append(ConfidenceFactor(
-            "structured_filter", +0.03, "Filtres structurés (term/terms/range)"))
+            "structured_filter", +0.03, "Structured filters (term/terms/range) — full fidelity"))
 
-    # Vérification des champs requis selon le type
+    # Check required fields for this type
     missing = _missing_required_fields(rule)
     if missing:
         factors.append(ConfidenceFactor(
             "missing_fields", -0.15,
-            f"Champs ElastAlert manquants: {', '.join(missing)}"))
+            f"Required ElastAlert fields missing: {', '.join(missing)}"))
 
-    # Pénalité de sémantique pour les types comportementaux
+    # Semantic penalty for behavioral types (approximation only)
     if rule.rule_type in ("spike", "flatline", "change"):
         factors.append(ConfidenceFactor(
             "semantic_gap", -0.05,
-            "Sémantique temporelle non strictement équivalente"))
+            "Temporal semantics not strictly equivalent — behavioral type, approximation only"))
 
-    # Query_key présent et géré -> bonus pour agrégations
+    # Bonus: query_key correctly mapped on aggregating types
     if rule.rule_type in ("frequency", "cardinality", "metric_aggregation") \
             and rule.get("query_key"):
         factors.append(ConfidenceFactor(
-            "query_key", +0.03, "query_key correctement mappé sur STATS ... BY"))
+            "query_key", +0.03, "query_key correctly mapped to STATS ... BY"))
 
     total = sum(f.delta for f in factors)
     result.confidence = max(0.0, min(1.0, total))
@@ -132,9 +130,9 @@ def _missing_required_fields(rule) -> list[str]:  # noqa: ANN001
 
 def confidence_band(value: float) -> str:
     if value >= 0.85:
-        return "ÉLEVÉE"
+        return "HIGH"
     if value >= 0.60:
-        return "MOYENNE"
+        return "MEDIUM"
     if value >= 0.30:
-        return "FAIBLE"
-    return "TRÈS FAIBLE"
+        return "LOW"
+    return "VERY LOW"

@@ -1,26 +1,26 @@
-"""Détection et classification des scripts / code custom dans une règle ElastAlert.
+"""Detection and classification of custom scripts/code in an ElastAlert rule.
 
-ElastAlert permet d'injecter du code Python ou des scripts externes à plusieurs
-endroits, ce qui impacte fortement la migrabilité :
+ElastAlert allows injecting Python code or external scripts at several points,
+which directly affects how automatically a rule can be migrated:
 
-1. TYPE custom        -> `type: module.file.RuleName`
-   La *logique de détection* est en Python. Non convertible automatiquement.
-   => migration manuelle obligatoire.
+1. CUSTOM TYPE        -> `type: module.file.RuleName`
+   The detection logic is in Python — cannot be converted automatically.
+   => manual migration required.
 
-2. ALERTER custom     -> `alert: module.file.AlertName`
-   L'*action* d'alerte est en Python. La détection peut migrer, mais l'action
-   doit être recréée côté Elastic (connector/action). Pénalité modérée.
+2. CUSTOM ALERTER     -> `alert: module.file.AlertName`
+   The alert action is in Python. Detection can migrate, but the action must
+   be recreated as an Elastic connector/action. Moderate penalty.
 
 3. COMMAND alerter    -> `alert: command` + `command: [...]`
-   Exécute un script/binaire externe. Même cas que l'alerter custom : la
-   détection migre, l'action est à recréer (souvent via un webhook/connector).
+   Runs an external script/binary. Same as custom alerter: detection migrates,
+   action must be recreated (usually via a webhook/connector).
 
 4. ENHANCEMENTS       -> `match_enhancements: [module.file.Enh]`
-   Modules Python qui modifient le match avant alerte. Peuvent contenir de la
-   logique de détection déguisée. Pénalité modérée à forte.
+   Python modules that modify the match before alerting. May contain hidden
+   detection logic. Moderate-to-high penalty.
 
-Le scorer consomme ScriptFindings pour ajuster la confiance et décider si la
-règle doit basculer en stratégie `manual`.
+The scorer consumes ScriptFindings to adjust confidence and decide whether the
+rule must fall back to the `manual` strategy.
 """
 from __future__ import annotations
 
@@ -28,15 +28,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-# Types de règles natifs (non-custom). Tout `type` contenant un point et ne
-# figurant pas ici est considéré comme un type custom (module.file.RuleName).
+# Native (non-custom) rule types. Any `type` containing a dot that is not listed
+# here is treated as a custom Python module type (module.file.RuleName).
 BUILTIN_RULE_TYPES = {
     "any", "blacklist", "whitelist", "frequency", "cardinality",
     "metric_aggregation", "spike", "spike_aggregation", "flatline",
     "new_term", "change", "percentage_match",
 }
 
-# Alerters intégrés (non-custom).
+# Built-in alerters (non-custom).
 BUILTIN_ALERTERS = {
     "email", "jira", "opsgenie", "sns", "hipchat", "slack", "mattermost",
     "telegram", "googlechat", "debug", "stomp", "thehive", "command",
@@ -46,7 +46,7 @@ BUILTIN_ALERTERS = {
     "command_alerter", "webhook",
 }
 
-# Heuristique : un identifiant ressemblant à module.file.ClassName
+# Heuristic: an identifier that looks like module.file.ClassName
 _MODULE_PATH = re.compile(r"^[a-zA-Z_][\w]*(\.[a-zA-Z_][\w]*){2,}$")
 
 
@@ -57,8 +57,8 @@ class ScriptFinding:
     category: str          # "custom_rule_type" | "custom_alerter" |
                            # "command_alerter" | "enhancement"
     detail: str
-    blocks_detection: bool  # True si la LOGIQUE DE DÉTECTION est en code
-    reference: str = ""     # chemin module ou commande
+    blocks_detection: bool  # True if the DETECTION LOGIC itself is in code
+    reference: str = ""     # module path or command
 
 
 @dataclass
@@ -71,12 +71,12 @@ class ScriptAnalysis:
 
     @property
     def blocks_detection(self) -> bool:
-        """True si au moins un finding rend la détection non-migrable."""
+        """True if at least one finding makes the detection non-migratable."""
         return any(f.blocks_detection for f in self.findings)
 
     @property
     def has_custom_action(self) -> bool:
-        """True si une action (alerter custom/command) devra être recréée."""
+        """True if a custom action (alerter or command) must be recreated."""
         return any(
             f.category in ("custom_alerter", "command_alerter")
             for f in self.findings
@@ -90,19 +90,18 @@ def _looks_like_module_path(value: str) -> bool:
 def analyze(raw: dict[str, Any]) -> ScriptAnalysis:
     analysis = ScriptAnalysis()
 
-    # 1. Type de règle custom -------------------------------------------------
+    # 1. Custom rule type -----------------------------------------------------
     rtype = str(raw.get("type", "")).strip()
     if rtype and rtype not in BUILTIN_RULE_TYPES and _looks_like_module_path(rtype):
         analysis.findings.append(ScriptFinding(
             category="custom_rule_type",
-            detail=(f"Type de règle custom en Python ('{rtype}'). La logique de "
-                    "détection est dans du code et n'est pas convertible "
-                    "automatiquement."),
+            detail=(f"Custom Python rule type ('{rtype}'): detection logic is in code "
+                    "and cannot be migrated automatically."),
             blocks_detection=True,
             reference=rtype,
         ))
 
-    # 2. & 3. Alerters --------------------------------------------------------
+    # 2. & 3. Alerters (built-in alerters are ignored) ------------------------
     alert = raw.get("alert")
     alert_list = alert if isinstance(alert, list) else [alert] if alert else []
     for a in alert_list:
@@ -112,23 +111,22 @@ def analyze(raw: dict[str, Any]) -> ScriptAnalysis:
             cmd_repr = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
             analysis.findings.append(ScriptFinding(
                 category="command_alerter",
-                detail=("Alerter 'command' : exécute un script/binaire externe. "
-                        "La détection migre, mais l'action doit être recréée "
-                        "côté Elastic (connector / webhook)."),
+                detail=("'command' alerter runs an external script/binary. "
+                        "Detection migrates, but the action must be recreated "
+                        "as an Elastic connector or webhook."),
                 blocks_detection=False,
                 reference=cmd_repr,
             ))
         elif a_str and a_str not in BUILTIN_ALERTERS and _looks_like_module_path(a_str):
             analysis.findings.append(ScriptFinding(
                 category="custom_alerter",
-                detail=(f"Alerter Python custom ('{a_str}'). La détection migre, "
-                        "mais l'action devra être réimplémentée en connector "
-                        "Elastic."),
+                detail=(f"Custom Python alerter ('{a_str}'): detection migrates, "
+                        "but the action must be reimplemented as an Elastic connector."),
                 blocks_detection=False,
                 reference=a_str,
             ))
 
-    # 4. Enhancements ---------------------------------------------------------
+    # 4. Match enhancements ---------------------------------------------------
     enh = raw.get("match_enhancements")
     enh_list = enh if isinstance(enh, list) else [enh] if enh else []
     for e in enh_list:
@@ -136,8 +134,8 @@ def analyze(raw: dict[str, Any]) -> ScriptAnalysis:
         if e_str:
             analysis.findings.append(ScriptFinding(
                 category="enhancement",
-                detail=(f"Match enhancement Python ('{e_str}'). Peut contenir de "
-                        "la logique modifiant le match ; à revoir manuellement."),
+                detail=(f"Python match_enhancement ('{e_str}'): may contain logic "
+                        "that modifies the match — must be reviewed and ported manually."),
                 blocks_detection=False,
                 reference=e_str,
             ))

@@ -116,10 +116,10 @@ def test_filter_translation_terms_and_range():
 
 
 def test_confidence_band():
-    assert confidence_band(0.9) == "ÉLEVÉE"
-    assert confidence_band(0.7) == "MOYENNE"
-    assert confidence_band(0.4) == "FAIBLE"
-    assert confidence_band(0.1) == "TRÈS FAIBLE"
+    assert confidence_band(0.9) == "HIGH"
+    assert confidence_band(0.7) == "MEDIUM"
+    assert confidence_band(0.4) == "LOW"
+    assert confidence_band(0.1) == "VERY LOW"
 
 
 @pytest.mark.parametrize("rtype", [
