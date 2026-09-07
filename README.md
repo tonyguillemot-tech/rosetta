@@ -89,8 +89,13 @@ custom code. Affected rules receive `Review: Custom Action` or
 ## Installation
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows : .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
+
+> On Debian/Ubuntu, `pip install` system-wide is blocked by default (PEP 668).
+> Always use a virtual environment — the `.venv/` directory is already in `.gitignore`.
 
 ## Usage
 
