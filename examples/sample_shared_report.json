@@ -5,10 +5,10 @@
   "parse_errors": 0,
   "rules": [
     {
-      "fingerprint": "154e91c81282",
+      "fingerprint": "4a97e09c2b2b",
       "source_type": "any",
       "strategy": "esql",
-      "confidence": 0.9,
+      "confidence": 0.95,
       "needs_review": false,
       "factors": [
         {
@@ -16,8 +16,8 @@
           "delta": 0.95
         },
         {
-          "label": "lucene_filter",
-          "delta": -0.05
+          "label": "lucene_exact",
+          "delta": 0.0
         }
       ],
       "warning_codes": {},
@@ -48,10 +48,14 @@
       "uses_query_key": false,
       "has_timeframe": false,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "a65d422e592d",
+      "fingerprint": "b173e8d698fc",
       "source_type": "blacklist",
       "strategy": "esql",
       "confidence": 0.93,
@@ -91,12 +95,16 @@
       "uses_query_key": false,
       "has_timeframe": false,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "6d8ff9ff92be",
+      "fingerprint": "0a49e1afe44d",
       "source_type": "cardinality",
-      "strategy": "esql",
+      "strategy": "threshold",
       "confidence": 0.91,
       "needs_review": false,
       "factors": [
@@ -121,30 +129,18 @@
         }
       ],
       "filter_count": 1,
-      "esql_skeleton": {
-        "pipeline": [
-          "FROM",
-          "WHERE",
-          "STATS",
-          "WHERE"
-        ],
-        "functions": [
-          "COUNT_DISTINCT"
-        ],
-        "operators": [
-          ">",
-          "IN"
-        ],
-        "is_aggregating": true,
-        "stage_count": 4
-      },
+      "esql_skeleton": null,
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "4c333132e866",
+      "fingerprint": "6dbcb1ef4191",
       "source_type": "change",
       "strategy": "esql",
       "confidence": 0.43,
@@ -181,7 +177,8 @@
           "FROM",
           "WHERE",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "COUNT_DISTINCT"
@@ -192,18 +189,22 @@
           "IN"
         ],
         "is_aggregating": true,
-        "stage_count": 4
+        "stage_count": 5
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": true,
+      "migration_strategy": "machine_learning",
+      "migration_score": 0.55,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "083be527c79f",
+      "fingerprint": "697ffce645f8",
       "source_type": "frequency",
       "strategy": "esql",
-      "confidence": 0.73,
+      "confidence": 0.88,
       "needs_review": false,
       "factors": [
         {
@@ -215,12 +216,8 @@
           "delta": -0.05
         },
         {
-          "label": "warnings",
-          "delta": -0.1
-        },
-        {
-          "label": "lucene_filter",
-          "delta": -0.05
+          "label": "lucene_exact",
+          "delta": 0.0
         },
         {
           "label": "query_key",
@@ -244,7 +241,8 @@
           "FROM",
           "WHERE",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "COUNT"
@@ -255,20 +253,24 @@
           ">="
         ],
         "is_aggregating": true,
-        "stage_count": 4
+        "stage_count": 5
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [
         "command_alerter"
       ],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "2c33aa804cb6",
+      "fingerprint": "8390c4d4ce21",
       "source_type": "blacklist",
       "strategy": "esql",
-      "confidence": 0.75,
+      "confidence": 0.85,
       "needs_review": false,
       "factors": [
         {
@@ -278,10 +280,6 @@
         {
           "label": "custom_action",
           "delta": -0.05
-        },
-        {
-          "label": "warnings",
-          "delta": -0.1
         }
       ],
       "warning_codes": {
@@ -307,10 +305,14 @@
       "custom_action_categories": [
         "custom_alerter"
       ],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "91291464f70d",
+      "fingerprint": "5984ed4cf21f",
       "source_type": "custom_module",
       "strategy": "manual",
       "confidence": 0.05,
@@ -326,7 +328,7 @@
         }
       ],
       "warning_codes": {
-        "custom_detection_code": 1
+        "other": 1
       },
       "filter_shapes": [
         {
@@ -341,10 +343,14 @@
       "uses_query_key": false,
       "has_timeframe": false,
       "custom_action_categories": [],
-      "has_custom_detection_code": true
+      "has_custom_detection_code": true,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "08094d436522",
+      "fingerprint": "fa4f406ce1cb",
       "source_type": "flatline",
       "strategy": "threshold",
       "confidence": 0.43,
@@ -380,13 +386,17 @@
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": true,
+      "migration_strategy": "machine_learning",
+      "migration_score": 0.5,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "d29a36ddb534",
+      "fingerprint": "9aa45150c76c",
       "source_type": "frequency",
       "strategy": "esql",
-      "confidence": 0.88,
+      "confidence": 0.93,
       "needs_review": false,
       "factors": [
         {
@@ -394,8 +404,8 @@
           "delta": 0.9
         },
         {
-          "label": "lucene_filter",
-          "delta": -0.05
+          "label": "lucene_exact",
+          "delta": 0.0
         },
         {
           "label": "query_key",
@@ -417,7 +427,8 @@
           "FROM",
           "WHERE",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "COUNT"
@@ -429,23 +440,27 @@
           "AND"
         ],
         "is_aggregating": true,
-        "stage_count": 4
+        "stage_count": 5
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "cd0ed2336960",
+      "fingerprint": "e8bb1d2631fb",
       "source_type": "metric_aggregation",
       "strategy": "esql",
-      "confidence": 0.85,
+      "confidence": 0.88,
       "needs_review": false,
       "factors": [
         {
           "label": "base_type",
-          "delta": 0.82
+          "delta": 0.85
         },
         {
           "label": "query_key",
@@ -459,7 +474,8 @@
         "pipeline": [
           "FROM",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "AVG"
@@ -468,15 +484,19 @@
           ">"
         ],
         "is_aggregating": true,
-        "stage_count": 3
+        "stage_count": 4
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "0a9679767028",
+      "fingerprint": "93d353abf149",
       "source_type": "new_term",
       "strategy": "new_terms",
       "confidence": 0.93,
@@ -502,10 +522,14 @@
       "uses_query_key": false,
       "has_timeframe": false,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "22cf20b0471a",
+      "fingerprint": "cf0118b2bf1f",
       "source_type": "percentage_match",
       "strategy": "esql",
       "confidence": 0.52,
@@ -531,7 +555,8 @@
           "EVAL",
           "STATS",
           "EVAL",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "CASE",
@@ -543,18 +568,22 @@
           ">"
         ],
         "is_aggregating": true,
-        "stage_count": 5
+        "stage_count": 6
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "7437be167b68",
+      "fingerprint": "80fd1e27b7aa",
       "source_type": "spike",
       "strategy": "esql",
-      "confidence": 0.3,
+      "confidence": 0.35,
       "needs_review": true,
       "factors": [
         {
@@ -566,8 +595,8 @@
           "delta": -0.1
         },
         {
-          "label": "lucene_filter",
-          "delta": -0.05
+          "label": "lucene_exact",
+          "delta": 0.0
         },
         {
           "label": "semantic_gap",
@@ -592,7 +621,8 @@
           "WHERE",
           "EVAL",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "COUNT",
@@ -604,15 +634,19 @@
           ">="
         ],
         "is_aggregating": true,
-        "stage_count": 5
+        "stage_count": 6
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": true,
+      "migration_strategy": "machine_learning",
+      "migration_score": 0.75,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "26b422080ebe",
+      "fingerprint": "a35cbe66a21e",
       "source_type": "spike_aggregation",
       "strategy": "manual",
       "confidence": 0.1,
@@ -636,13 +670,17 @@
       "uses_query_key": false,
       "has_timeframe": false,
       "custom_action_categories": [],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     },
     {
-      "fingerprint": "58df32d89a1f",
+      "fingerprint": "5b0b5cb9028f",
       "source_type": "frequency",
       "strategy": "esql",
-      "confidence": 0.8,
+      "confidence": 0.9,
       "needs_review": false,
       "factors": [
         {
@@ -652,10 +690,6 @@
         {
           "label": "enhancement",
           "delta": -0.06
-        },
-        {
-          "label": "warnings",
-          "delta": -0.1
         },
         {
           "label": "structured_filter",
@@ -680,7 +714,8 @@
           "FROM",
           "WHERE",
           "STATS",
-          "WHERE"
+          "WHERE",
+          "KEEP"
         ],
         "functions": [
           "COUNT"
@@ -691,14 +726,18 @@
           ">="
         ],
         "is_aggregating": true,
-        "stage_count": 4
+        "stage_count": 5
       },
       "uses_query_key": true,
       "has_timeframe": true,
       "custom_action_categories": [
         "enhancement"
       ],
-      "has_custom_detection_code": false
+      "has_custom_detection_code": false,
+      "ml_job_recommended": false,
+      "migration_strategy": null,
+      "migration_score": null,
+      "prebuilt_hint": null
     }
   ]
 }

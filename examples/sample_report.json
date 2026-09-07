@@ -1,0 +1,530 @@
+[
+  {
+    "fingerprint": "4a97e09c2b2b",
+    "name": "PowerShell encoded command",
+    "source_type": "any",
+    "strategy": "esql",
+    "confidence": 0.95,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": "FROM logs-endpoint.events.* METADATA _id, _version, _index\n| WHERE (process.name == \"powershell.exe\" AND process.command_line LIKE \"*-enc*\")\n| KEEP _id, _version, _index, @timestamp",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: PowerShell encoded command\ntype: any\nindex: logs-endpoint.events.*\npriority: 3\nfilter:\n- query:\n    query_string:\n      query: process.name:powershell.exe AND process.command_line:*-enc*\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.95,
+        "detail": "Base confidence for type 'any'"
+      },
+      {
+        "label": "lucene_exact",
+        "delta": 0.0,
+        "detail": "Lucene query_string fully parsed (field:value, AND/OR/NOT, ranges, comparisons) — residual risk: analyzed-field matching semantics can't be verified without the index mapping"
+      }
+    ]
+  },
+  {
+    "fingerprint": "b173e8d698fc",
+    "name": "Blacklisted service accounts",
+    "source_type": "blacklist",
+    "strategy": "esql",
+    "confidence": 0.93,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": "FROM logs-system.security-* METADATA _id, _version, _index\n| WHERE event.code == \"4624\"\n| WHERE user.name IN (\"svc_legacy\", \"guest\", \"test\")\n| KEEP _id, _version, _index, @timestamp",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Blacklisted service accounts\ntype: blacklist\nindex: logs-system.security-*\ncompare_key: user.name\nblacklist:\n- svc_legacy\n- guest\n- test\nfilter:\n- term:\n    event.code: '4624'\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'blacklist'"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      }
+    ]
+  },
+  {
+    "fingerprint": "0a49e1afe44d",
+    "name": "User authenticating to many hosts",
+    "source_type": "cardinality",
+    "strategy": "threshold",
+    "confidence": 0.91,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": null,
+    "kql_query": "event.category:(\"authentication\")",
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: User authenticating to many hosts\ntype: cardinality\nindex: logs-*\ncardinality_field: host.name\nmax_cardinality: 10\nquery_key: user.name\ntimeframe:\n  hours: 1\nfilter:\n- terms:\n    event.category:\n    - authentication\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.85,
+        "detail": "Base confidence for type 'cardinality'"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      },
+      {
+        "label": "query_key",
+        "delta": 0.03,
+        "detail": "query_key correctly mapped to STATS ... BY"
+      }
+    ]
+  },
+  {
+    "fingerprint": "6dbcb1ef4191",
+    "name": "User changed geolocation",
+    "source_type": "change",
+    "strategy": "esql",
+    "confidence": 0.43,
+    "band": "LOW",
+    "needs_review": true,
+    "warnings": [
+      "'change' type approximated: detects >1 distinct value for the compared field within the time window — no strict temporal ordering is preserved. Verify this captures the field-change semantics you need."
+    ],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE event.category == \"authentication\"\n| STATS changes_0 = COUNT_DISTINCT(source.geo.country_name) BY user.name\n| WHERE changes_0 > 1\n| KEEP user.name, changes_0",
+    "kql_query": null,
+    "migration_strategy": "machine_learning",
+    "migration_score": 0.55,
+    "prebuilt_hint": null,
+    "ml_job_commands": "PUT _ml/anomaly_detectors/rosetta_user_changed_geolocation_change\n{\n  \"description\": \"Migré depuis ElastAlert (change) : User changed geolocation\",\n  \"analysis_config\": {\n    \"bucket_span\": \"24h\",\n    \"detectors\": [\n      {\n        \"function\": \"rare\",\n        \"by_field_name\": \"source.geo.country_name\",\n        \"detector_description\": \"Valeur rare/inédite de source.geo.country_name — migré depuis la règle ElastAlert (change) « User changed geolocation »\",\n        \"partition_field_name\": \"user.name\"\n      }\n    ],\n    \"influencers\": [\n      \"user.name\",\n      \"source.geo.country_name\"\n    ]\n  },\n  \"data_description\": {\n    \"time_field\": \"@timestamp\"\n  }\n}\n\nPUT _ml/datafeeds/datafeed-rosetta_user_changed_geolocation_change\n{\n  \"job_id\": \"rosetta_user_changed_geolocation_change\",\n  \"indices\": [\n    \"logs-*\"\n  ],\n  \"query\": {\n    \"bool\": {\n      \"filter\": [\n        {\n          \"term\": {\n            \"event.category\": \"authentication\"\n          }\n        }\n      ]\n    }\n  }\n}\n\nPOST _ml/anomaly_detectors/rosetta_user_changed_geolocation_change/_open\n\nPOST _ml/datafeeds/datafeed-rosetta_user_changed_geolocation_change/_start",
+    "indicator_match_commands": null,
+    "source_yaml": "name: User changed geolocation\ntype: change\nindex: logs-*\ncompare_key: source.geo.country_name\nquery_key: user.name\ntimeframe:\n  hours: 24\nfilter:\n- term:\n    event.category: authentication\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.55,
+        "detail": "Base confidence for type 'change'"
+      },
+      {
+        "label": "warnings",
+        "delta": -0.1,
+        "detail": "1 conversion warning(s)"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      },
+      {
+        "label": "semantic_gap",
+        "delta": -0.05,
+        "detail": "Temporal semantics not strictly equivalent — behavioral type, approximation only"
+      }
+    ]
+  },
+  {
+    "fingerprint": "697ffce645f8",
+    "name": "Frequency rule with command action",
+    "source_type": "frequency",
+    "strategy": "esql",
+    "confidence": 0.88,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [
+      "'command' alerter runs an external script/binary. Detection migrates, but the action must be recreated as an Elastic connector or webhook."
+    ],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE (event.outcome == \"failure\")\n| STATS event_count = COUNT(*) BY user.name\n| WHERE event_count >= 10\n| KEEP user.name, event_count",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Frequency rule with command action\ntype: frequency\nindex: logs-*\nnum_events: 10\ntimeframe:\n  minutes: 5\nquery_key: user.name\nfilter:\n- query:\n    query_string:\n      query: event.outcome:failure\nalert:\n- command\ncommand:\n- /opt/scripts/notify.sh\n- '%(rule_name)s'\n- '%(user.name)s'\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'frequency'"
+      },
+      {
+        "label": "custom_action",
+        "delta": -0.05,
+        "detail": "1 custom action(s) (command/alerter) must be recreated as Elastic connectors"
+      },
+      {
+        "label": "lucene_exact",
+        "delta": 0.0,
+        "detail": "Lucene query_string fully parsed (field:value, AND/OR/NOT, ranges, comparisons) — residual risk: analyzed-field matching semantics can't be verified without the index mapping"
+      },
+      {
+        "label": "query_key",
+        "delta": 0.03,
+        "detail": "query_key correctly mapped to STATS ... BY"
+      }
+    ]
+  },
+  {
+    "fingerprint": "8390c4d4ce21",
+    "name": "Blacklist with custom python alerter",
+    "source_type": "blacklist",
+    "strategy": "esql",
+    "confidence": 0.85,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [
+      "Custom Python alerter ('elastalert_modules.my_alerts.AwesomeNewAlerter'): detection migrates, but the action must be reimplemented as an Elastic connector."
+    ],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE user.name IN (\"baduser\")\n| KEEP _id, _version, _index, @timestamp",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Blacklist with custom python alerter\ntype: blacklist\nindex: logs-*\ncompare_key: user.name\nblacklist:\n- baduser\nalert: elastalert_modules.my_alerts.AwesomeNewAlerter\noutput_file_path: /tmp/alerts.log\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'blacklist'"
+      },
+      {
+        "label": "custom_action",
+        "delta": -0.05,
+        "detail": "1 custom action(s) (command/alerter) must be recreated as Elastic connectors"
+      }
+    ]
+  },
+  {
+    "fingerprint": "5984ed4cf21f",
+    "name": "Fully custom detection logic",
+    "source_type": "elastalert_modules.my_rules.SuspiciousLoginRule",
+    "strategy": "manual",
+    "confidence": 0.05,
+    "band": "VERY LOW",
+    "needs_review": true,
+    "warnings": [
+      "Custom Python rule type ('elastalert_modules.my_rules.SuspiciousLoginRule'): detection logic is in code and cannot be migrated automatically."
+    ],
+    "esql_query": null,
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Fully custom detection logic\ntype: elastalert_modules.my_rules.SuspiciousLoginRule\nindex: logs-*\nusernames:\n- admin\n- root\ntime_start: 01:00\ntime_end: 04:00\nfilter:\n- query:\n    query_string:\n      query: event.category:authentication\nalert:\n- email\nemail:\n- soc@example.com\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.2,
+        "detail": "Base confidence for type 'elastalert_modules.my_rules.SuspiciousLoginRule'"
+      },
+      {
+        "label": "custom_detection_code",
+        "delta": -0.15,
+        "detail": "Detection logic is in custom Python code — cannot be migrated automatically"
+      }
+    ]
+  },
+  {
+    "fingerprint": "fa4f406ce1cb",
+    "name": "Agent heartbeat flatline",
+    "source_type": "flatline",
+    "strategy": "threshold",
+    "confidence": 0.43,
+    "band": "LOW",
+    "needs_review": true,
+    "warnings": [
+      "'flatline' alert logic is inverted: ElastAlert fires when the event count drops BELOW the threshold; a Threshold rule fires when it EXCEEDS it. Invert the logic (e.g. use a suppression or absence-detection rule) or validate manually. An optional, complementary ML job (statistical low-count detection) is included in this rule's note field — see its caveats before relying on it alone."
+    ],
+    "esql_query": null,
+    "kql_query": "event.dataset:\"endpoint.heartbeat\"",
+    "migration_strategy": "machine_learning",
+    "migration_score": 0.5,
+    "prebuilt_hint": null,
+    "ml_job_commands": "PUT _ml/anomaly_detectors/rosetta_agent_heartbeat_flatline_flatline\n{\n  \"description\": \"Migré depuis ElastAlert (flatline) : Agent heartbeat flatline\",\n  \"analysis_config\": {\n    \"bucket_span\": \"10m\",\n    \"detectors\": [\n      {\n        \"function\": \"low_count\",\n        \"detector_description\": \"Baisse anormale du volume d'événements — migré depuis la règle ElastAlert (flatline) « Agent heartbeat flatline »\",\n        \"partition_field_name\": \"agent.id\"\n      }\n    ],\n    \"influencers\": [\n      \"agent.id\"\n    ]\n  },\n  \"data_description\": {\n    \"time_field\": \"@timestamp\"\n  }\n}\n\nPUT _ml/datafeeds/datafeed-rosetta_agent_heartbeat_flatline_flatline\n{\n  \"job_id\": \"rosetta_agent_heartbeat_flatline_flatline\",\n  \"indices\": [\n    \"logs-endpoint.events.*\"\n  ],\n  \"query\": {\n    \"bool\": {\n      \"filter\": [\n        {\n          \"term\": {\n            \"event.dataset\": \"endpoint.heartbeat\"\n          }\n        }\n      ]\n    }\n  }\n}\n\nPOST _ml/anomaly_detectors/rosetta_agent_heartbeat_flatline_flatline/_open\n\nPOST _ml/datafeeds/datafeed-rosetta_agent_heartbeat_flatline_flatline/_start",
+    "indicator_match_commands": null,
+    "source_yaml": "name: Agent heartbeat flatline\ntype: flatline\nindex: logs-endpoint.events.*\nthreshold: 1\nquery_key: agent.id\ntimeframe:\n  minutes: 10\nfilter:\n- term:\n    event.dataset: endpoint.heartbeat\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.55,
+        "detail": "Base confidence for type 'flatline'"
+      },
+      {
+        "label": "warnings",
+        "delta": -0.1,
+        "detail": "1 conversion warning(s)"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      },
+      {
+        "label": "semantic_gap",
+        "delta": -0.05,
+        "detail": "Temporal semantics not strictly equivalent — behavioral type, approximation only"
+      }
+    ]
+  },
+  {
+    "fingerprint": "9aa45150c76c",
+    "name": "High failed login count per user",
+    "source_type": "frequency",
+    "strategy": "esql",
+    "confidence": 0.93,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE (event.category == \"authentication\" AND event.outcome == \"failure\")\n| STATS event_count = COUNT(*) BY user.name\n| WHERE event_count >= 20\n| KEEP user.name, event_count",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: High failed login count per user\ntype: frequency\nindex: logs-*\nnum_events: 20\ntimeframe:\n  minutes: 5\nquery_key: user.name\npriority: 4\ndescription: Detects users with many failed authentication events.\nfilter:\n- query:\n    query_string:\n      query: event.category:authentication AND event.outcome:failure\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'frequency'"
+      },
+      {
+        "label": "lucene_exact",
+        "delta": 0.0,
+        "detail": "Lucene query_string fully parsed (field:value, AND/OR/NOT, ranges, comparisons) — residual risk: analyzed-field matching semantics can't be verified without the index mapping"
+      },
+      {
+        "label": "query_key",
+        "delta": 0.03,
+        "detail": "query_key correctly mapped to STATS ... BY"
+      }
+    ]
+  },
+  {
+    "fingerprint": "e8bb1d2631fb",
+    "name": "High average outbound bytes",
+    "source_type": "metric_aggregation",
+    "strategy": "esql",
+    "confidence": 0.88,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": "FROM logs-network-* METADATA _id, _version, _index\n| STATS metric_value = AVG(network.bytes) BY source.ip\n| WHERE metric_value > 1000000\n| KEEP source.ip, metric_value",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: High average outbound bytes\ntype: metric_aggregation\nindex: logs-network-*\nmetric_agg_key: network.bytes\nmetric_agg_type: avg\nmax_threshold: 1000000\nquery_key: source.ip\ntimeframe:\n  minutes: 10\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.85,
+        "detail": "Base confidence for type 'metric_aggregation'"
+      },
+      {
+        "label": "query_key",
+        "delta": 0.03,
+        "detail": "query_key correctly mapped to STATS ... BY"
+      }
+    ]
+  },
+  {
+    "fingerprint": "93d353abf149",
+    "name": "New process name observed",
+    "source_type": "new_term",
+    "strategy": "new_terms",
+    "confidence": 0.93,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [],
+    "esql_query": null,
+    "kql_query": "event.category:\"process\"",
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: New process name observed\ntype: new_term\nindex: logs-endpoint.events.*\nfields:\n- process.name\nterms_window_size:\n  days: 30\nfilter:\n- term:\n    event.category: process\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'new_term'"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      }
+    ]
+  },
+  {
+    "fingerprint": "cf0118b2bf1f",
+    "name": "High error percentage per service",
+    "source_type": "percentage_match",
+    "strategy": "esql",
+    "confidence": 0.52,
+    "band": "LOW",
+    "needs_review": true,
+    "warnings": [
+      "'percentage_match': the match_bucket_filter was translated to an ES|QL CASE() expression — verify the generated EVAL clause matches your original intent."
+    ],
+    "esql_query": "FROM logs-app-* METADATA _id, _version, _index\n| EVAL is_match = CASE(http.response.status_code == 500, 1, 0)\n| STATS matched = SUM(is_match), total = COUNT(*) BY service.name\n| EVAL match_pct = 100.0 * matched / total\n| WHERE match_pct > 30\n| KEEP service.name, match_pct",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: High error percentage per service\ntype: percentage_match\nindex: logs-app-*\nmatch_bucket_filter:\n- term:\n    http.response.status_code: 500\nmax_percentage: 30\nquery_key: service.name\ntimeframe:\n  minutes: 15\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.62,
+        "detail": "Base confidence for type 'percentage_match'"
+      },
+      {
+        "label": "warnings",
+        "delta": -0.1,
+        "detail": "1 conversion warning(s)"
+      }
+    ]
+  },
+  {
+    "fingerprint": "80fd1e27b7aa",
+    "name": "Spike in authentication failures",
+    "source_type": "spike",
+    "strategy": "esql",
+    "confidence": 0.35,
+    "band": "LOW",
+    "needs_review": true,
+    "warnings": [
+      "'spike' converted approximately: the current-window vs reference-window comparison (spike_height=3) cannot be reproduced exactly in ES|QL. A ready-to-run Elasticsearch ML anomaly-detection job (faithful to spike_height/threshold_cur) is included in this rule's note field as an optional, more accurate alternative."
+    ],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE (event.outcome == \"failure\")\n| EVAL bucket = DATE_TRUNC(1 hour, @timestamp)\n| STATS event_count = COUNT(*) BY bucket, source.ip\n| WHERE event_count >= 50\n| KEEP bucket, source.ip, event_count",
+    "kql_query": null,
+    "migration_strategy": "machine_learning",
+    "migration_score": 0.75,
+    "prebuilt_hint": null,
+    "ml_job_commands": "PUT _ml/anomaly_detectors/rosetta_spike_in_authentication_failures_spike\n{\n  \"description\": \"Migré depuis ElastAlert (spike) : Spike in authentication failures\",\n  \"analysis_config\": {\n    \"bucket_span\": \"1h\",\n    \"detectors\": [\n      {\n        \"function\": \"high_count\",\n        \"detector_description\": \"Pic du volume d'événements — migré depuis la règle ElastAlert « Spike in authentication failures »\",\n        \"partition_field_name\": \"source.ip\",\n        \"custom_rules\": [\n          {\n            \"actions\": [\n              \"skip_result\"\n            ],\n            \"conditions\": [\n              {\n                \"applies_to\": \"actual\",\n                \"operator\": \"lt\",\n                \"value\": 50.0\n              }\n            ]\n          }\n        ]\n      }\n    ],\n    \"influencers\": [\n      \"source.ip\"\n    ]\n  },\n  \"data_description\": {\n    \"time_field\": \"@timestamp\"\n  }\n}\n\nPUT _ml/datafeeds/datafeed-rosetta_spike_in_authentication_failures_spike\n{\n  \"job_id\": \"rosetta_spike_in_authentication_failures_spike\",\n  \"indices\": [\n    \"logs-*\"\n  ],\n  \"query\": {\n    \"bool\": {\n      \"filter\": [\n        {\n          \"query\": {\n            \"query_string\": {\n              \"query\": \"event.outcome:failure\"\n            }\n          }\n        }\n      ]\n    }\n  }\n}\n\nPOST _ml/anomaly_detectors/rosetta_spike_in_authentication_failures_spike/_open\n\nPOST _ml/datafeeds/datafeed-rosetta_spike_in_authentication_failures_spike/_start",
+    "indicator_match_commands": null,
+    "source_yaml": "name: Spike in authentication failures\ntype: spike\nindex: logs-*\nspike_height: 3\nspike_type: up\nthreshold_cur: 50\nquery_key: source.ip\ntimeframe:\n  hours: 1\nfilter:\n- query:\n    query_string:\n      query: event.outcome:failure\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.5,
+        "detail": "Base confidence for type 'spike'"
+      },
+      {
+        "label": "warnings",
+        "delta": -0.1,
+        "detail": "1 conversion warning(s)"
+      },
+      {
+        "label": "lucene_exact",
+        "delta": 0.0,
+        "detail": "Lucene query_string fully parsed (field:value, AND/OR/NOT, ranges, comparisons) — residual risk: analyzed-field matching semantics can't be verified without the index mapping"
+      },
+      {
+        "label": "semantic_gap",
+        "delta": -0.05,
+        "detail": "Temporal semantics not strictly equivalent — behavioral type, approximation only"
+      }
+    ]
+  },
+  {
+    "fingerprint": "a35cbe66a21e",
+    "name": "Some exotic rule",
+    "source_type": "spike_aggregation",
+    "strategy": "manual",
+    "confidence": 0.1,
+    "band": "VERY LOW",
+    "needs_review": true,
+    "warnings": [
+      "ElastAlert type 'spike_aggregation' is not supported for automatic conversion. Manual migration required."
+    ],
+    "esql_query": null,
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Some exotic rule\ntype: spike_aggregation\nindex: logs-*\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.2,
+        "detail": "Base confidence for type 'spike_aggregation'"
+      },
+      {
+        "label": "manual",
+        "delta": -0.1,
+        "detail": "Unknown or unsupported type — manual migration required"
+      }
+    ]
+  },
+  {
+    "fingerprint": "5b0b5cb9028f",
+    "name": "Frequency with match enhancement",
+    "source_type": "frequency",
+    "strategy": "esql",
+    "confidence": 0.9,
+    "band": "HIGH",
+    "needs_review": false,
+    "warnings": [
+      "Python match_enhancement ('elastalert_modules.enhancements.GeoEnrich'): may contain logic that modifies the match — must be reviewed and ported manually."
+    ],
+    "esql_query": "FROM logs-* METADATA _id, _version, _index\n| WHERE event.action == \"login\"\n| STATS event_count = COUNT(*) BY source.ip\n| WHERE event_count >= 5\n| KEEP source.ip, event_count",
+    "kql_query": null,
+    "migration_strategy": null,
+    "migration_score": null,
+    "prebuilt_hint": null,
+    "ml_job_commands": null,
+    "indicator_match_commands": null,
+    "source_yaml": "name: Frequency with match enhancement\ntype: frequency\nindex: logs-*\nnum_events: 5\ntimeframe:\n  minutes: 10\nquery_key: source.ip\nmatch_enhancements:\n- elastalert_modules.enhancements.GeoEnrich\nfilter:\n- term:\n    event.action: login\nalert:\n- slack\n",
+    "factors": [
+      {
+        "label": "base_type",
+        "delta": 0.9,
+        "detail": "Base confidence for type 'frequency'"
+      },
+      {
+        "label": "enhancement",
+        "delta": -0.06,
+        "detail": "1 Python match_enhancement(s) — must be reviewed and ported manually"
+      },
+      {
+        "label": "structured_filter",
+        "delta": 0.03,
+        "detail": "Structured filters (term/terms/range) — full fidelity"
+      },
+      {
+        "label": "query_key",
+        "delta": 0.03,
+        "detail": "query_key correctly mapped to STATS ... BY"
+      }
+    ]
+  }
+]
