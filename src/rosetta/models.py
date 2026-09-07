@@ -14,6 +14,7 @@ class RuleStrategy(str, Enum):
     EQL = "eql"             # event correlation
     THRESHOLD = "threshold"  # threshold rule native
     NEW_TERMS = "new_terms"  # new terms rule native
+    THREAT_MATCH = "threat_match"  # indicator match natif (grosses listes IOC)
     MANUAL = "manual"       # nécessite une revue humaine
 
 

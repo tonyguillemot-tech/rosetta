@@ -58,11 +58,19 @@ def _rule_fingerprint(result: ConversionResult, secret: bytes) -> str:
     """Empreinte HMAC stable d'une règle, sans révéler son nom.
 
     Utilise le nom + le fichier source comme entrée, mais ne renvoie que le
-    digest tronqué : irréversible côté destinataire.
+    digest tronqué : irréversible côté destinataire. Publique (pas de '_')
+    car aussi utilisée par cmd_report (__main__.py) — avec le même secret,
+    elle produit la MÊME empreinte que côté sanitize_report, pour permettre
+    de faire le pont entre un rapport complet (client) et un rapport
+    anonymisé (soi-même) sur la même règle sans jamais y mettre son nom.
     """
     src = result.source
     base = f"{src.name}|{src.source_file or ''}".encode("utf-8")
     return hmac.new(secret, base, hashlib.sha256).hexdigest()[:12]
+
+
+# Alias rétro-compatible (nom historique utilisé en interne dans ce module).
+rule_fingerprint = _rule_fingerprint
 
 
 # --- Squelette de requête ES|QL --------------------------------------------
@@ -145,9 +153,15 @@ def sanitize_result(result: ConversionResult, secret: bytes) -> dict[str, Any]:
     # pourrait contenir un nom de champ.
     factors = [{"label": f.label, "delta": round(f.delta, 3)} for f in result.factors]
 
-    # Actions custom : on garde la CATÉGORIE, jamais la référence (chemin/module)
+    # Actions custom + enhancements : on garde la CATÉGORIE, jamais la
+    # référence (chemin/module). Les deux sont fusionnées ici uniquement pour
+    # la vue sanitisée — le TOML complet (non partagé) les garde séparées,
+    # voir toml_writer.py.
     custom_actions = result.metadata.get("custom_actions", [])
-    action_categories = sorted({a["category"] for a in custom_actions}) if custom_actions else []
+    enhancements = result.metadata.get("enhancements", [])
+    action_categories = sorted({
+        a["category"] for a in (custom_actions + enhancements)
+    }) if (custom_actions or enhancements) else []
 
     return {
         "fingerprint": _rule_fingerprint(result, secret),
@@ -164,6 +178,14 @@ def sanitize_result(result: ConversionResult, secret: bytes) -> dict[str, Any]:
         "has_timeframe": src.get("timeframe") is not None,
         "custom_action_categories": action_categories,
         "has_custom_detection_code": bool(result.metadata.get("custom_detection_code")),
+        # Booléen seulement : jamais le contenu du job (index, champs, seuils réels).
+        "ml_job_recommended": bool(result.metadata.get("ml_job_commands")),
+        "migration_strategy": result.metadata.get("migration_strategy"),
+        "migration_score": result.metadata.get("migration_score"),
+        # Sûr à inclure : uniquement des infos publiques sur le catalogue
+        # Elastic (catégorie, noms de fichiers, URLs GitHub) — jamais de
+        # donnée du client.
+        "prebuilt_hint": result.metadata.get("prebuilt_hint"),
     }
 
 
