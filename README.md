@@ -267,11 +267,27 @@ correctly isolated with low confidence.
 
 - `query_string` Lucene query conversion is best-effort (booleans, `field:value`,
   lists, wildcards → `LIKE`). Complex queries are flagged for manual review.
-- `spike` does not reproduce the current-window / reference-window comparison;
-  consider an ML rule instead.
+- `spike` does not reproduce the current-window / reference-window comparison.
+  Rosetta delivers an ES|QL approximation and also generates a ready-to-import ML
+  companion TOML (`_ml_job.toml`) — but the ML job uses the default anomaly
+  threshold, not `spike_height`. Review before enabling.
 - `flatline` detects absence; a Threshold rule detects a count exceeding a value —
-  the logic must be inverted and validated manually.
+  the logic must be inverted and validated manually. An ML companion is also
+  generated, but zero-count detection depends on datafeed configuration not set
+  up by the generated job.
+- `change` delivers a `COUNT_DISTINCT` approximation. The ML companion uses a
+  `rare` job, which is biased toward first appearance — not a true
+  "alert on every value change".
+- IOC type detection (`blacklist` → `threat_match` or Indicator Match companion)
+  is based on a field-name + value-shape heuristic, not a confirmed ECS data
+  contract. Verify the detected IOC type before enabling the companion.
+- The field/value coherence check (`field_hints.py`) is a narrow heuristic for
+  well-known security field shapes (IP, hash, port, bytes…) — not full ECS
+  schema validation.
 - The `priority` → `severity` / `risk_score` mapping is heuristic.
+- `--check-prebuilt` matches by index pattern and field names — it is a
+  retrieval hint, not a semantic match. Judging whether a candidate truly covers
+  the same intent is on you.
 
 ## Architecture
 
@@ -280,9 +296,15 @@ src/rosetta/
 ├── parser/elastalert.py           # YAML ElastAlert → normalized model
 ├── scripts.py                     # custom script / code detection
 ├── esql/translator.py             # DSL/Lucene filters → ES|QL WHERE & KQL
+├── field_hints.py                 # field/value coherence heuristic (ECS-adjacent)
 ├── converters/registry.py         # one converter per ElastAlert type
-├── scoring/confidence.py          # explainable confidence score
-├── detection_rule/toml_writer.py  # model → detection-rules TOML
+├── ml_job.py                      # ML anomaly-detection job generation (spike/change/flatline)
+├── indicator_match.py             # IOC detection + Indicator Match plan (blacklist)
+├── prebuilt_match.py              # live GitHub lookup for Elastic prebuilt rule overlap
+├── scoring/confidence.py          # explainable confidence score + migration fidelity
+├── detection_rule/toml_writer.py  # model → detection-rules TOML (+ companion files)
+├── sanitize.py                    # privacy-by-design sanitized output (share command)
+├── html_writer.py                 # interactive HTML report (report / share --html)
 └── __main__.py                    # CLI (convert / report / share)
 ```
 
