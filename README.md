@@ -114,6 +114,10 @@ The HTML report features an interactive table with sortable columns, confidence 
 search by rule name, and a side panel that opens when you click a rule — showing confidence
 breakdown, warnings, ES|QL query, source YAML, score factors, and recommended migration paths.
 
+Sample outputs generated from the bundled example rules:
+[`examples/report.html`](examples/report.html) (HTML) and
+[`examples/sample_report.json`](examples/sample_report.json) (JSON).
+
 ### Generate TOML rule files
 
 ```bash
@@ -173,6 +177,10 @@ python -m rosetta share /path/to/your/rules -o shared_report.json
 # Interactive HTML report with the same data
 python -m rosetta share /path/to/your/rules --html shared_report.html
 ```
+
+Sample outputs generated from the bundled example rules:
+[`examples/report_share.html`](examples/report_share.html) (HTML) and
+[`examples/sample_shared_report.json`](examples/sample_shared_report.json) (JSON).
 
 For each rule the report contains: the source type, the Elastic strategy, the score
 and its factors, **categories** of warnings, the **shape** of filters
