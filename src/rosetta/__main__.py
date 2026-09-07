@@ -15,6 +15,9 @@ import sys
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from .converters.registry import convert
 from .detection_rule.toml_writer import to_toml, to_toml_indicator_match_companion, to_toml_ml_companion
