@@ -206,12 +206,24 @@ enables two things:
   look it up by fingerprint in your own full `report`, without the rule's name,
   fields, or values ever having left your side.
 
-```bash
-export ROSETTA_HMAC_SECRET="your-shared-secret"
-# or pass it explicitly on either command:
-python -m rosetta report /path/to/your/rules --hmac-secret "your-shared-secret"
-python -m rosetta share  /path/to/your/rules --hmac-secret "your-shared-secret" -o shared_report.json
-```
+The secret can be provided in three ways (checked in order):
+
+1. **`.env` file** at the root of the project (loaded automatically, never committed):
+   ```bash
+   cp .env.example .env
+   # then edit .env and set ROSETTA_HMAC_SECRET
+   ```
+2. **Environment variable** (e.g. in CI or shell profile):
+   ```bash
+   export ROSETTA_HMAC_SECRET="your-shared-secret"
+   ```
+3. **CLI flag** (one-off override, takes precedence over env/`.env`):
+   ```bash
+   python -m rosetta report /path/to/your/rules --hmac-secret "your-shared-secret"
+   python -m rosetta share  /path/to/your/rules --hmac-secret "your-shared-secret" -o shared_report.json
+   ```
+
+`.env` is listed in `.gitignore` — keep your secret out of version control.
 
 Without a secret, `report` and `share` both print a warning on stderr reminding
 you that the fingerprint won't match anything generated separately.
