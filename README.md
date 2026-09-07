@@ -184,13 +184,37 @@ What **never appears** in the output: rule names and descriptions, field and ind
 names, filter values (IPs, users, hostnames, hashes), business thresholds, script
 paths, or raw queries. A field omitted from the safe-list cannot leak by design.
 
-To produce stable fingerprints across multiple runs (useful for tracking a specific
-rule over time), set a shared secret:
+### Referencing the same rule later: `--hmac-secret` / `ROSETTA_HMAC_SECRET`
+
+Both `report` and `share` compute an HMAC **fingerprint** for each rule instead of
+including its name. By default, each run uses a fresh random key, so fingerprints
+are only comparable *within that one run* — if you re-run `report` or `share`
+later, the same rule gets a different fingerprint, and neither run can print
+`Avertissement : pas de --hmac-secret/ROSETTA_HMAC_SECRET` without meaning it.
+
+Set the **same** secret on both sides to get a stable, matching fingerprint. This
+enables two things:
+
+- **Tracking a rule over time**: re-running `share` with the same secret next
+  week gives the same fingerprint for the same rule, so you can tell whether a
+  previously-flagged rule still shows up.
+- **Bridging a sanitized report back to the full one**: you (or your team) keep
+  the full `report` output internally (rule names, queries, everything); you send
+  someone else the sanitized `share` output. If that secret matches the one used
+  for your internal `report`, the fingerprint in both outputs is identical — so
+  you can say "the rule with fingerprint `a3f9…` in the share you sent me" and
+  look it up by fingerprint in your own full `report`, without the rule's name,
+  fields, or values ever having left your side.
 
 ```bash
 export ROSETTA_HMAC_SECRET="your-shared-secret"
-python -m rosetta share /path/to/your/rules -o shared_report.json
+# or pass it explicitly on either command:
+python -m rosetta report /path/to/your/rules --hmac-secret "your-shared-secret"
+python -m rosetta share  /path/to/your/rules --hmac-secret "your-shared-secret" -o shared_report.json
 ```
+
+Without a secret, `report` and `share` both print a warning on stderr reminding
+you that the fingerprint won't match anything generated separately.
 
 ## Testing with a synthetic corpus
 
